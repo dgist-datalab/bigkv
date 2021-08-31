@@ -28,12 +28,18 @@ struct handler *handler_init(char dev_name[]) {
 	hlr->ops->get_kv = hopscotch_get;
 	hlr->ops->set_kv = hopscotch_set;
 	hlr->ops->delete_kv = hopscotch_delete;
+	hlr->ops->need_gc = hopscotch_need_gc;
+	hlr->ops->trigger_gc = hopscotch_trigger_gc;
+	hlr->ops->wait_gc = hopscotch_wait_gc;
 #elif BIGKV
 	hlr->ops->init = bigkv_index_init;
 	hlr->ops->free = bigkv_index_free;
 	hlr->ops->get_kv = bigkv_index_get;
 	hlr->ops->set_kv = bigkv_index_set;
 	hlr->ops->delete_kv = bigkv_index_delete;
+	hlr->ops->need_gc = bigkv_index_need_gc;
+	hlr->ops->trigger_gc = bigkv_index_trigger_gc;
+	hlr->ops->wait_gc = bigkv_index_wait_gc;
 #endif
 	hlr->ops->init(hlr->ops);
 
@@ -63,8 +69,11 @@ struct handler *handler_init(char dev_name[]) {
 		q_enqueue((void *)&hlr->cb_arr[i], hlr->cb_pool);
 	}
 
+	hlr->gc = NULL;
+
 	hlr->read = dev_abs_read;
 	hlr->write = dev_abs_write;
+	hlr->idx_write = dev_abs_idx_write;
 
 #ifdef LINUX_AIO
 	memset(&hlr->aio_ctx, 0, sizeof(io_context_t));
@@ -75,6 +84,14 @@ struct handler *handler_init(char dev_name[]) {
 #elif SPDK
 	// TODO
 #endif
+
+
+#ifdef CDF
+	hlr->cdf_table = (uint64_t *)malloc(CDF_TABLE_MAX * sizeof(uint64_t));
+	memset(hlr->cdf_table, 0, CDF_TABLE_MAX * sizeof (uint64_t));
+	hlr->nr_query = 0;
+#endif
+	memset(&hlr->stat, 0, sizeof(struct stats));
 
 	pthread_create(&hlr->hlr_tid, NULL, &request_handler, hlr);
 	cpu_set_t cpuset;
@@ -123,6 +140,10 @@ void handler_free(struct handler *hlr) {
 
 	io_destroy(hlr->aio_ctx);
 
+#ifdef CDF
+	free(hlr->cdf_table);
+#endif
+
 	free(hlr);
 }
 
@@ -166,6 +187,7 @@ void *request_handler(void *input) {
 	struct kv_ops *ops = hlr->ops;
 
 	struct callback *cb = NULL;
+	struct gc *gc;
 
 	char thread_name[128] = {0};
 	sprintf(thread_name, "%s[%d]", "request_handler", hlr->number);
@@ -179,11 +201,31 @@ void *request_handler(void *input) {
 			return NULL;
 		}
 
+		if (ops->need_gc(ops, hlr)) {
+			static uint64_t gc_cnt = 0;
+			if ((++gc_cnt % 1000) == 0) {
+				printf("gc_cnt: %lu\n", gc_cnt);
+				dev_print_gc_info(hlr);
+			}
+			hlr->gc = init_gc();
+			gc = hlr->gc;
+			rc = ops->trigger_gc(ops, hlr);
+			if (gc->state == GC_DONE) {
+				free_gc(gc);
+				continue;
+			} else {
+				ops->wait_gc(ops, hlr);
+				free_gc(gc);
+			}
+			
+		}
+
 		if (!(req=get_next_request(hlr))) {
 			continue;
 		}
 
 		while ((cb = (struct callback *)q_dequeue(hlr->done_q))) {
+			printf("cb call??\n");
 			cb->func(cb->arg);
 			q_enqueue((void *)cb, hlr->cb_pool);
 		}
@@ -197,6 +239,10 @@ void *request_handler(void *input) {
 			if (rc) {
 				puts("Not existing key!");
 				printf("%lu\n", req->key.hash_low);
+				printf("%s\n", req->key.key);
+				static int not_exist = 0;
+				if ((++not_exist % 100) == 0)
+					printf("not: %d\n", not_exist);
 				req->end_req(req);
 			}
 			break;

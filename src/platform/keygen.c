@@ -84,6 +84,7 @@ int set_key_dist
 kg_key_t get_next_key_for_load(struct keygen *kg) {
 	if (kg->load_cnt >= kg->nr_key) {
 		fprintf(stderr, "Loading key overflow!\n");
+		kg->load_cnt = 0;
 		return NULL;
 	} else {
 		kg_key_t return_key;

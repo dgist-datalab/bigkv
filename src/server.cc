@@ -1,6 +1,7 @@
 #include "platform/util.h"
 #include "platform/handler.h"
 #include "platform/request.h"
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,12 +22,28 @@ struct server {
 } server;
 
 static void server_exit(int sig) {
+#ifdef CDF
+	uint64_t nr_query = 0;
+	struct master *mas = server.mas;
+	for (int i = 0; i < mas->num_dev; i++) {
+		for (int j = 0; j < CDF_TABLE_MAX; j++) {
+			mas->cdf_table[j] += mas->hlr[i]->cdf_table[j];
+		}
+		nr_query += mas->hlr[i]->nr_query;
+	}	
+	print_cdf(mas->cdf_table, nr_query);
+	fflush(stdout);
+#endif
+	for (int i = 0; i < mas->num_dev; i++)
+		print_hlr_stat(mas->hlr[i]);
 	exit(1);
 }
 
 static int signal_add() {
 	struct sigaction sa;
 	sa.sa_handler = server_exit;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGSEGV, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
 	return 0;
 }

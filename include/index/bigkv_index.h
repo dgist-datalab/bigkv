@@ -17,8 +17,13 @@
 #define PART_TABLE_GRAINS (PART_TABLE_SIZE/GRAIN_UNIT)
 #define PART_TABLE_ENTRYS (PART_TABLE_SIZE/ENTRY_SIZE)
 
-#define NR_BUCKET (1 << 22) // 24 for 1GiB
-#define NR_PART (NR_BUCKET/BUCKETS_IN_PART)
+#ifdef TEST_GC
+#define NR_BUCKET (1 << 22) // 24 for 1GiB, In-memory, 256MB, 1 ssd space
+#define NR_PART (1<<20) // flash mapping pages, 1 index 1 part, part * 256 = all indices ==> 256GB storage, bucket_in_part = 8 ==> 128GB
+#else
+#define NR_BUCKET (1 << 22) // 24 for 1GiB, In-memory, 256MB, 1 ssd space
+#define NR_PART (NR_BUCKET/BUCKETS_IN_PART) // flash mapping pages, 1 index 1 part, part * 256 = all indices ==> 256GB storage, bucket_in_part = 8 ==> 128GB
+#endif
 
 #define MAX_HOP 256
 
@@ -85,5 +90,36 @@ int bigkv_index_free(struct kv_ops *ops);
 int bigkv_index_get(struct kv_ops *ops, struct request *req);
 int bigkv_index_set(struct kv_ops *ops, struct request *req);
 int bigkv_index_delete(struct kv_ops *ops, struct request *req);
+int bigkv_index_need_gc(struct kv_ops *ops, struct handler *hlr);
+int bigkv_index_trigger_gc(struct kv_ops *ops, struct handler *hlr);
+int bigkv_index_wait_gc(struct kv_ops *ops, struct handler *hlr);
+
+static void print_ptable (struct hash_part_table *ptable, const char *str, int part_idx) {
+	printf("[PTABLE][%s] ptable idx = %d\n", str, part_idx);
+	for (int i = 0; i < PART_TABLE_ENTRYS; i++)
+		printf("ptable[%d], fp = %lu, offset = %lu, kv_size: %lu, pba: %lu\n", i, ptable->entry[i].fingerprint, ptable->entry[i].offset, ptable->entry[i].kv_size, ptable->entry[i].pba);
+
+}
+
+static bool ptable_sanity_check (struct hash_part_table *ptable, const char *str, int part_idx) {
+
+	if (part_idx == 288345) print_ptable(ptable, str, part_idx);
+
+	bool ret = false, flag = true, zero_flag = true;
+	for (int i = 0; i < PART_TABLE_ENTRYS; i++) {
+		if (ptable->entry[i].pba == 0) {
+			if (flag) {
+				printf("[WARNING][%s] ptable idx = %d\n", str, part_idx);
+				flag = false;
+			}
+			printf("ptable[%d], fp = %lu, offset = %lu, kv_size: %lu, pba: %lu\n", i, ptable->entry[i].fingerprint, ptable->entry[i].offset, ptable->entry[i].kv_size, ptable->entry[i].pba);
+			if (!zero_flag) ret = true;
+			if (zero_flag) zero_flag = false;
+		}
+	}
+	return ret;
+
+}
+
 
 #endif

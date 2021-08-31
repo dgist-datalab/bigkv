@@ -29,6 +29,11 @@ struct kv_ops {
 	int (*set_kv) (struct kv_ops *, struct request *);
 	int (*delete_kv) (struct kv_ops *, struct request *);
 
+
+	int (*need_gc) (struct kv_ops *, struct handler *hlr);
+	int (*trigger_gc) (struct kv_ops *, struct handler *hlr);
+	int (*wait_gc) (struct kv_ops *, struct handler *hlr);
+
 	void *_private;
 	struct kv_ops_stat stat;
 };

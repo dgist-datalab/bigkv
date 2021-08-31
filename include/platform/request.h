@@ -46,7 +46,9 @@ struct request {
 };
 
 struct request *make_request_from_netreq(struct handler *hlr, struct netreq *nr, int sock);
+struct request *make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_type_t type);
 void add_request_info(struct request *req);
 void *net_end_req(void *_req);
+void *redis_end_req(void *_req);
 
 #endif

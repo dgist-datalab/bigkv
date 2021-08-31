@@ -58,6 +58,32 @@ ssize_t read_sock_bulk(int sock, void *buf, ssize_t max_objs, ssize_t align) {
 	return readed;
 }
 
+ssize_t read_sock_bulk_circular(int sock, void *buf, ssize_t buf_size, ssize_t buf_start, ssize_t buf_len) {
+	ssize_t buf_end = buf_start + buf_len;
+	ssize_t len;
+	len = read(sock, &(((char *)buf)[buf_end]), buf_size - buf_end);
+	//printf("len: %d\n", len);
+	if (len == -1) {
+		//perror("-1\n");
+		//len = read(sock, &(((char *)buf)[buf_end]), buf_size - buf_end);
+		//perror("-1\n");
+		//abort();
+		if (buf_len == 0) {
+			return -1;
+		} else {
+			fprintf(stderr, "sock buf remain! len: %zu\n", len);
+			return 0;
+		}
+
+	} else if (len == 0) {
+		if (buf_len > 0) {
+			fprintf(stderr, "sock buf remain! len: %zu\n", len);
+		}
+		return 0;
+	}
+
+	return len;
+}
 
 ssize_t send_request(int sock, struct netreq *nr) {
 	return write(sock, nr, sizeof(struct netreq));

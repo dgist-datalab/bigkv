@@ -7,23 +7,21 @@
 
 #include <stdint.h>
 #include <time.h>
+#include <stddef.h>
 #include "config.h"
 
 typedef uint64_t hash_t;
 
-enum seg_state_t:unsigned char {
-	SEG_STATE_FREE,
-	SEG_STATE_STAGED,
-	SEG_STATE_USED,
-};
 
 enum req_type_t:unsigned char {
+	REQ_TYPE_UNKNOWN,
 	REQ_TYPE_PADDING,
 	REQ_TYPE_SET,
 	REQ_TYPE_GET,
 	REQ_TYPE_DELETE,
 	REQ_TYPE_RANGE,
 	REQ_TYPE_ITERATOR,
+	REQ_TYPE,UPDATE,
 };
 
 enum htable_t {

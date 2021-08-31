@@ -11,6 +11,8 @@ aio_read(struct handler *hlr, uint64_t addr_in_byte, uint32_t size,
 	int rc = 0;
 
 	//struct iocb *iocb = (struct iocb *)malloc(sizeof(struct iocb));
+	//printf("aio_read %llu, %u\n", addr_in_byte, size);
+	//if (addr_in_byte == 140737488355200) abort();
 	struct iocb *iocb = (struct iocb *)q_dequeue(hlr->iocb_pool);
 	io_prep_pread(iocb, hlr->dev->dev_fd, buf, size, addr_in_byte);
 
@@ -32,6 +34,7 @@ aio_write(struct handler *hlr, uint64_t addr_in_byte, uint32_t size,
 	int rc = 0;
 
 	//struct iocb *iocb = (struct iocb *)malloc(sizeof(struct iocb));
+	//printf("aio_write %lld, %d\n", addr_in_byte, size);
 	struct iocb *iocb = (struct iocb *)q_dequeue(hlr->iocb_pool);
 	io_prep_pwrite(iocb, hlr->dev->dev_fd, buf, size, addr_in_byte);
 

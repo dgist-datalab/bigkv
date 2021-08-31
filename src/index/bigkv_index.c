@@ -179,6 +179,7 @@ insert_to_ptable(struct hash_part_table *ptable, struct hash_entry *entry) {
 		entry_f->kv_size = entry->kv_size;
 		entry_f->pba = entry->pba;
 	} else {
+		//print_ptable(ptable, "FULL", 0);
 		rc = -1;
 	}
 	return rc;
@@ -227,7 +228,8 @@ static void *cb_part_table_write(void *arg) {
 
 int bigkv_index_get(struct kv_ops *ops, struct request *req) {
 	//sw_start(sw_get);
-	int rc = 0, lru_origin;
+	volatile int rc = 0;
+	int lru_origin;
 	struct handler *hlr = req->hlr;
 	struct bigkv_index *bi = (struct bigkv_index *)ops->_private;
 	struct hash_table *table = bi->table;
@@ -250,12 +252,24 @@ int bigkv_index_get(struct kv_ops *ops, struct request *req) {
 	if (!req->params) req->params = make_bi_params();
 	struct bi_params *params = (struct bi_params *)req->params;
 
+	uint64_t old_pba;
+
+	//if (strncmp(req->key.key, "user4931155956028412375513337700", 32) == 0) {
+	//	puts("get here");
+
+	//}
+
+
 	switch (params->read_step) {
 	case BI_STEP_UPDATE_TABLE:
+		hlr->stat.nr_read_cache_miss++;
 		goto bi_update_table;
 	case BI_STEP_KEY_MISMATCH:
-		//printf("wtf?\n");
+		hlr->stat.nr_read_key_mismatch++;
+		printf("wtf?\n");
+		break;
 	default:
+		hlr->stat.nr_read++;
 		break;
 	}
 
@@ -280,6 +294,7 @@ bi_update_table:
 	ptable = (struct hash_part_table *)req->temp_buf;
 	entry_f = get_match_entry_f(ptable, req->key.hash_low);
 	if (!entry_f) {
+		printf("req->key.key: %s\n", req->key.key);
 		rc = -1;
 		goto exit;
 	}
@@ -311,8 +326,11 @@ get_target_retry:
 		char *ptable_buf = update_part_table(ptable, part_buckets);
 		ptable = NULL;
 		cb = make_callback(hlr, cb_part_table_write_for_get, ptable_buf);
-		part->pba = get_next_pba(hlr, PART_TABLE_SIZE);
-		hlr->write(hlr, part->pba, PART_TABLE_GRAINS, ptable_buf, cb);
+		old_pba = part->pba;
+		part->pba = get_next_idx_pba(hlr, PART_TABLE_SIZE);
+		hlr->idx_write(hlr, part->pba, old_pba, PART_TABLE_GRAINS, ptable_buf, cb, part_idx);
+		//part->pba = get_next_pba(hlr, PART_TABLE_SIZE);
+		//hlr->write(hlr, part->pba, old_pba, PART_TABLE_GRAINS, ptable_buf, cb);
 		goto get_target_retry;
 	}
 
@@ -323,6 +341,8 @@ read_kvpair:
 exit:
 	//sw_end(sw_get);
 	//t_get += sw_get_usec(sw_get);
+	if (rc == -1)
+		hlr->stat.nr_read_miss++;
 	return rc;
 }
 
@@ -348,12 +368,22 @@ int bigkv_index_set(struct kv_ops *ops, struct request *req) {
 	if (!req->params) req->params = make_bi_params();
 	struct bi_params *params = (struct bi_params *)req->params;
 
+	uint64_t old_pba;
+
+	//if (strncmp(req->key.key, "user4931155956028412375513337700", 32) == 0) {
+	//	puts("set here");
+
+	//}
+
+
 	switch (params->write_step) {
 	case BI_STEP_WRITE_PTABLE:
+		hlr->stat.nr_write_cache_miss++;
 		goto bi_write_ptable;
 	case BI_STEP_WRITE_KV:
 		goto bi_get_entry;
 	default:
+		hlr->stat.nr_write++;
 		break;
 	}
 
@@ -371,6 +401,7 @@ bi_get_entry:
 		entry->lru_bit = 0;
 		entry->kv_size = req->value.len / GRAIN_UNIT;
 		//sw_start(sw_pba);
+		old_pba = entry->pba;
 		entry->pba = get_next_pba(hlr, req->value.len);
 		//sw_end(sw_pba);
 		//set_pba += sw_get_usec(sw_pba);
@@ -407,15 +438,18 @@ bi_write_ptable:
 	req->temp_buf = update_part_table(
 		(struct hash_part_table *)req->temp_buf, part_buckets);
 	cb = make_callback(hlr, cb_part_table_write, req);
-	part->pba = get_next_pba(hlr, PART_TABLE_SIZE);
-	hlr->write(hlr, part->pba, PART_TABLE_GRAINS, req->temp_buf, cb);
+	old_pba = part->pba;
+	part->pba = get_next_idx_pba(hlr, PART_TABLE_SIZE);
+	hlr->idx_write(hlr, part->pba, old_pba, PART_TABLE_GRAINS, req->temp_buf, cb, part_idx);
+	//part->pba = get_next_pba(hlr, PART_TABLE_SIZE);
+	//hlr->write(hlr, part->pba, old_pba, PART_TABLE_GRAINS, req->temp_buf, cb);
 	goto exit;
 
 write_kvpair:
 	cb = make_callback(hlr, req->end_req, req);
 	copy_key_to_value(&req->key, &req->value);
 	//sw_start(sw_cpy);
-	hlr->write(hlr, entry->pba, entry->kv_size, req->value.value, cb);
+	hlr->write(hlr, entry->pba, old_pba, entry->kv_size, req->value.value, cb);
 	//sw_end(sw_cpy);
 	//set_cpy += sw_get_usec(sw_cpy);
 
@@ -429,3 +463,117 @@ int bigkv_index_delete(struct kv_ops *ops, struct request *req) {
 	return 0;
 }
 
+int bigkv_index_need_gc(struct kv_ops *ops, struct handler *hlr) {
+
+	return dev_need_gc(hlr);
+}
+
+void *cb_idx_gc (void *arg) {
+	return NULL;
+}
+
+static int trigger_idx_gc(struct handler* hlr, struct gc *gc) {
+
+	struct bigkv_index *bi = (struct bigkv_index *)hlr->ops->_private;
+	struct hash_table *table = bi->table;
+
+	struct segment *victim_seg = (struct segment *)gc->_private;
+	uint32_t valid_cnt = gc->valid_cnt;
+	uint32_t entry_cnt = victim_seg->entry_cnt;
+	char *seg_buf = (char*)gc->buf;
+
+	uint64_t start_pba = victim_seg->start_addr / GRAIN_UNIT;
+	uint64_t victim_part_pba;
+	uint64_t part_idx;
+	struct hash_partition *part;
+	char *ptable_buf;
+	struct callback *cb = NULL;
+	
+	for (int i = 0; i < entry_cnt; i++) {
+		part_idx = *(seg_buf + i * PART_IDX_SIZE);
+		part = &table->part[part_idx];
+		victim_part_pba = start_pba + i * PART_TABLE_GRAINS;
+		if (part->pba == victim_part_pba) { // valid part
+			ptable_buf = seg_buf + SEG_IDX_HEADER_SIZE + i * PART_TABLE_SIZE;
+			cb = make_callback(hlr, cb_idx_gc, gc);
+			part->pba = get_next_idx_pba(hlr, PART_TABLE_SIZE);
+			hlr->idx_write(hlr, part->pba, victim_part_pba, PART_TABLE_GRAINS, ptable_buf, cb, part_idx);
+
+			//part->pba = get_next_pba(hlr, PART_TABLE_SIZE);
+			//hlr->write(hlr, part->pba, victim_part_pba, PART_TABLE_GRAINS, ptable_buf, cb);
+		}
+	}
+
+	if (victim_seg->invalid_cnt != entry_cnt) {
+		abort();
+	}
+
+	gc->state = GC_DONE;
+
+	return 0;
+}
+
+static int trigger_data_gc(struct handler* hlr, struct gc *gc) {
+	struct bigkv_index *bi = (struct bigkv_index *)hlr->ops->_private;
+	struct hash_table *table = bi->table;
+
+	struct segment *victim_seg = (struct segment *)gc->_private;
+	uint32_t valid_cnt = gc->valid_cnt;
+	uint32_t entry_cnt = victim_seg->entry_cnt;
+	char *seg_buf = (char*)gc->buf;
+
+	uint64_t start_pba = victim_seg->start_addr / GRAIN_UNIT;
+	uint64_t victim_part_pba;
+	uint64_t part_idx;
+	struct hash_partition *part;
+	char *ptable_buf;
+	struct callback *cb = NULL;
+
+	/*
+	
+	for (int i = 0; i < entry_cnt; i++) {
+		part_idx = *(seg_buf + i * PART_IDX_SIZE);
+		part = &table->part[part_idx];
+		victim_part_pba = start_pba + i * PART_TABLE_GRAINS;
+		if (part->pba == victim_part_pba) { // valid part
+			ptable_buf = seg_buf + SEG_IDX_HEADER_SIZE + i * PART_TABLE_SIZE;
+			cb = make_callback(hlr, cb_idx_gc, gc);
+			part->pba = get_next_idx_pba(hlr, PART_TABLE_SIZE);
+			hlr->idx_write(hlr, part->pba, victim_part_pba, PART_TABLE_GRAINS, ptable_buf, cb, part_idx);
+
+			//part->pba = get_next_pba(hlr, PART_TABLE_SIZE);
+			//hlr->write(hlr, part->pba, victim_part_pba, PART_TABLE_GRAINS, ptable_buf, cb);
+		}
+	}
+
+	if (victim_seg->invalid_cnt != entry_cnt) {
+		abort();
+	}
+	*/
+
+	return 0;
+}
+
+int bigkv_index_trigger_gc(struct kv_ops *ops, struct handler *hlr) {
+	struct gc *gc = hlr->gc;
+
+	if (!dev_read_victim_segment(hlr, gc)) {
+		goto exit;
+	}
+
+	if (gc->is_idx)
+		trigger_idx_gc(hlr, gc);
+	else
+		trigger_data_gc(hlr, gc);
+
+
+exit:
+	reap_gc_segment(hlr, gc);
+	gc->state = GC_DONE;
+
+	return gc->valid_cnt;
+}
+
+int bigkv_index_wait_gc(struct kv_ops *ops, struct handler *hlr) {
+	return 0;
+}

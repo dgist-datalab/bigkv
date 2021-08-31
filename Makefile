@@ -9,23 +9,42 @@ CC = g++
 CFLAGS += \
 	-g \
 	-Wall \
+	-Wno-unused-function \
 	-std=c++11 \
-#	-O2 \
+	-O2 \
+#	-O0 \
+	-fsanitize=address \
+	-static-libasan \
+#	-fsanitize=undefined \
 #	-fsanitize=address \
+#	-fsanitize=thread \
 
 LIBS += \
 	-lcityhash \
 	-lpthread \
 	-laio \
 
+
+#	-DHOPSCOTCH \ # hopscotch hash
+#	-DHOPSCOTCH_PART \ # hopscotch-cache
+#	-DPART_MEM \ # hopscotch-cache: store full parts in memory
+#	-DTEST_GC \ # bigkv test gc
+#	-DREDIS \ # YCSB
+
 DEFS += \
 	-DCITYHASH \
 	-DLINUX_AIO \
 	-DUNIFORM \
-	-DUSE_HUGEPAGE\
-	-DBIGKV \
-#	-DYCSB \
+	-DCDF \
+	-DREDIS \
 	-DHOPSCOTCH \
+	-DHOPSCOTCH_PART \
+	-DPART_MEM \
+#	-DBIGKV \
+#	-DTEST_GC \ # bigkv test gc
+#	-DHOPSCOTCH_FULL \ # hopscotch or hopscotch-swap
+#	-DUSE_HUGEPAGE\
+#	-DYCSB \
 #	-DHOTSPOT \
 
 OBJ_SRC += \
@@ -34,15 +53,21 @@ OBJ_SRC += \
 	$(SRC_DIR)/platform/util.c \
 	$(SRC_DIR)/platform/keygen.c \
 	$(SRC_DIR)/platform/master.c \
+	$(SRC_DIR)/platform/client.c \
 	$(SRC_DIR)/platform/request.c \
 	$(SRC_DIR)/platform/handler.c \
 	$(SRC_DIR)/platform/request.c \
 	$(SRC_DIR)/platform/device.c \
 	$(SRC_DIR)/platform/poller.c \
 	$(SRC_DIR)/platform/aio.c \
+	$(SRC_DIR)/platform/redis.c \
+	$(SRC_DIR)/platform/redis_exec.c \
 	$(SRC_DIR)/utility/queue.c \
 	$(SRC_DIR)/utility/lfqueue.c \
 	$(SRC_DIR)/utility/cond_lock.c \
+	$(SRC_DIR)/utility/lru_cache.c \
+	$(SRC_DIR)/utility/art.c \
+	$(SRC_DIR)/utility/list.c \
 
 TARGET_OBJ =\
 		$(patsubst %.c,%.o,$(OBJ_SRC))\

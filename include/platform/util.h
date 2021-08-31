@@ -33,6 +33,15 @@ uint128 hashing_key_128(char *key, uint8_t len);
 
 ssize_t read_sock(int sock, void *buf, ssize_t count);
 ssize_t read_sock_bulk(int sock, void *buf, ssize_t count, ssize_t align);
+ssize_t read_sock_bulk_circular(int sock, void *buf, ssize_t buf_size, ssize_t buf_start, ssize_t buf_end);
+static inline ssize_t move_circular_buf(void *buf, ssize_t buf_size, ssize_t buf_start, ssize_t buf_len) {
+	ssize_t buf_end = buf_start + buf_len;
+	if (buf_size - buf_end <= MASTER_SOCK_MOVE) {
+		memcpy(buf, ((char *)buf + buf_start), buf_len);
+		return buf_len;
+	}
+	return 0;
+}
 
 ssize_t send_request(int sock, struct netreq *nr);
 ssize_t send_request_bulk(int sock, struct netreq *nr_arr, int count);

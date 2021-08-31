@@ -37,15 +37,17 @@ static void *aio_poller(void *input) {
 				if (ev->res == EINVAL) {
 					fprintf(stderr, "aio: I/O failed\n");
 				} else if (ev->res != iocb->u.c.nbytes) {
-					fprintf(stderr, "aio: Data size error\n");
+					fprintf(stderr, "aio: Data size error %lu!=%lu\n", ev->res, iocb->u.c.nbytes);
+					printf("%s\n",strerror(-ev->res));
+					perror("sss\n");
 					abort();
 				}
 
 				//q_enqueue((void *)cb, hlr->done_q);
 				cb->func(cb->arg);
+				q_enqueue((void *)cb, hlr->cb_pool);
 				//free(ev->data);
 				q_enqueue((void *)iocb, hlr->iocb_pool);
-				q_enqueue((void *)cb, hlr->cb_pool);
 			}
 		}
 
