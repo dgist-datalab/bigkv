@@ -49,13 +49,18 @@ make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_t
 
 
 	// args[3]: value
-	req->value.len = cli->args_size[3];
+	//printf("%d\n", type);
+	//if (type == 3) {
+	//	printf("%s\n", cli->args[1]);
+	//}
+	//printf("%d\n", cli->args_size[3]);
 
 	switch (req->type) {
 	case REQ_TYPE_GET:
 		set_value(&req->value, VALUE_LEN_MAX, NULL);
 		break;
 	case REQ_TYPE_SET:
+		req->value.len = cli->args_size[3];
 		set_value(&req->value, req->value.len, (char*)cli->args[3]);
 		break;
 	case REQ_TYPE_DELETE:

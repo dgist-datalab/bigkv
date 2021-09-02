@@ -101,6 +101,10 @@ static void print_ptable (struct hash_part_table *ptable, const char *str, int p
 
 }
 
+static void print_entry (struct hash_entry *entry, const char *str) {
+	printf("[ENTRY][%s] fp: %lu, dirty: %lu, lru: %lu, kv_size: %lu, pba: %lu\n", str, entry->fingerprint, entry->dirty_bit, entry->lru_bit, entry->kv_size, entry->pba);
+}
+
 static bool ptable_sanity_check (struct hash_part_table *ptable, const char *str, int part_idx) {
 
 	if (part_idx == 288345) print_ptable(ptable, str, part_idx);

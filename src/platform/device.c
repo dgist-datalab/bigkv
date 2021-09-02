@@ -94,7 +94,9 @@ dev_abs_init(const char dev_name[]) {
 		seg->entry_cnt = 0;
 		seg->invalid_cnt = 0;
 		seg->age = 0;
-		//seg->seg_bitmap = (uint8_t *)calloc(1, 2048);
+#ifdef DEBUG_GC
+		seg->seg_bitmap = (uint8_t *)calloc(1, 2048);
+#endif
 		q_enqueue((void *)seg, dev->free_seg_q);
 
 	}
@@ -201,10 +203,13 @@ reap_committed_seg(struct dev_abs *dev) {
 	return 0;
 }
 
-static int invalidate_seg_entry(struct handler *hlr, uint64_t pba) {
+static int invalidate_seg_entry(struct handler *hlr, uint64_t pba, bool is_idx_write) {
 	struct dev_abs *dev = hlr->dev;
 	int seg_idx = pba * GRAIN_UNIT/ dev->segment_size;
 	struct segment *seg = dev->seg_array + seg_idx;
+
+	if (!is_idx_write)
+		return SEG_MAX_AGE;
 
 	if (pba > dev->size_in_byte / GRAIN_UNIT)
 		return (dev->age / dev->nr_segment) % MAX_SEG_AGE;
@@ -213,22 +218,19 @@ static int invalidate_seg_entry(struct handler *hlr, uint64_t pba) {
 	if (seg->state == SEG_STATE_FREE) 
 		return SEG_MAX_AGE;
 
-	//if(seg->seg_bitmap[pba % (dev->segment_size / GRAIN_UNIT)] >= 1)
-	//	abort();
+	//if (!is_idx_write && seg->state & SEG_STATE_IDX)
+	//	return SEG_MAX_AGE;
+
+	if (is_idx_write && seg->state & SEG_STATE_DATA)
+		abort();
+
+
 	//else
-	/*
+	
+#ifdef DEBUG_GC
 	int pba_idx = pba % (dev->segment_size / GRAIN_UNIT);
 	pba_idx = (seg->state & SEG_STATE_IDX) ? pba_idx / 32 : pba_idx / 8;
-	seg->seg_bitmap[pba_idx]++;
-	*/
-
-	seg->invalid_cnt++;
-	if (seg->invalid_cnt == seg->entry_cnt) {
-		//print_segment(seg, "Should trim");
-		dev->invalid_seg_cnt++;
-		list_move_to_head(dev->committed_seg_list, seg->lnode);
-	} else if (seg->invalid_cnt > seg->entry_cnt) {
-		/*
+	if(seg->seg_bitmap[pba_idx % (dev->segment_size / GRAIN_UNIT)] >= 1) {
 		int cnt = 0, sum = 0;;
 		for (int i = 0; i < 2048/16; i++) {
 			for (int j = 0; j < 16; j++) {
@@ -240,7 +242,33 @@ static int invalidate_seg_entry(struct handler *hlr, uint64_t pba) {
 		}
 		print_segment(seg, "Too many invalid");
 		printf("cnt: %d, sum: %d\n", cnt, sum);
-		*/
+		fflush(stdout);
+
+
+		abort();
+	}
+	seg->seg_bitmap[pba_idx]++;
+#endif
+
+	seg->invalid_cnt++;
+	if ((seg->state & SEG_STATE_COMMITTED) && (seg->invalid_cnt == seg->entry_cnt)) {
+		//print_segment(seg, "Should trim");
+		dev->invalid_seg_cnt++;
+		list_move_to_head(dev->committed_seg_list, seg->lnode);
+	} else if (seg->invalid_cnt > seg->entry_cnt) {
+#ifdef DEBUG_GC
+		int cnt = 0, sum = 0;;
+		for (int i = 0; i < 2048/16; i++) {
+			for (int j = 0; j < 16; j++) {
+				printf("%d ", seg->seg_bitmap[i*16+j]);
+				cnt = cnt + !!(seg->seg_bitmap[i*16+j]);
+				sum = sum + seg->seg_bitmap[i*16+j];
+			}
+			printf("\n");
+		}
+		print_segment(seg, "Too many invalid");
+		printf("cnt: %d, sum: %d\n", cnt, sum);
+#endif
 		abort();
 	}
 	return 0;
@@ -316,7 +344,7 @@ dev_abs_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t size
 	cb->func(cb->arg);
 	q_enqueue((void *)cb, hlr->cb_pool);
 	
-	return invalidate_seg_entry(hlr, old_pba);
+	return invalidate_seg_entry(hlr, old_pba, false);
 }
 
 int
@@ -333,22 +361,30 @@ dev_abs_idx_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t 
 
 	if (offset > SEGMENT_SIZE) abort();
 
+	/*
 	if (old_pba == 33575920) {
 		printf("pba: %lu, old_pba: %lu, size_in_grain: %u\n", pba, old_pba, size_in_grain);
 		print_segment(ss, "idx_write");
 	}
+	*/
 
 
 	memcpy((char *)ss->buf + offset, buf, size);
 
 	memcpy((char*)ss->buf + (ss->entry_cnt * PART_IDX_SIZE), &part_idx, PART_IDX_SIZE);
+	/*
+	if (ss->entry_cnt == 0) {
+		//uint64_t tmp = *ss->buf;
+		printf("idx: %d, part_idx: %lu\n", ss->idx, part_idx);
+	}
+	*/
 
 	ss->entry_cnt++;
 
 	cb->func(cb->arg);
 	q_enqueue((void *)cb, hlr->cb_pool);
 
-	return invalidate_seg_entry(hlr, old_pba);
+	return invalidate_seg_entry(hlr, old_pba, true);
 }
 
 
@@ -602,6 +638,10 @@ void reap_gc_segment(struct handler *hlr, struct gc *gc) {
 	victim->lnode = NULL;
 	victim->offset = victim->start_addr;
 	victim->age = ((++dev->age) / dev->nr_segment) % MAX_SEG_AGE;
+
+#ifdef DEBUG_GC
+	memset(victim->seg_bitmap, 0, 2048);
+#endif
 	
 	dev->nr_free_segment++;
 

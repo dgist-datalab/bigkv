@@ -14,8 +14,12 @@
 #include <signal.h>
 
 #ifdef TEST_GC
+//#define NR_KEY (10 * 1000 * 1000)
+//#define NR_QUERY (10 * 1000 * 1000)
+
 #define NR_KEY (10 * 1000 * 1000)
 #define NR_QUERY (10 * 1000 * 1000)
+
 #else
 #define NR_KEY   500000
 #define NR_QUERY 100000

@@ -11,10 +11,10 @@ CFLAGS += \
 	-Wall \
 	-Wno-unused-function \
 	-std=c++11 \
-	-O2 \
-#	-O0 \
+	-O0 \
 	-fsanitize=address \
 	-static-libasan \
+#	-O2 \
 #	-fsanitize=undefined \
 #	-fsanitize=address \
 #	-fsanitize=thread \
@@ -25,11 +25,13 @@ LIBS += \
 	-laio \
 
 
+#	-DHOPSCOTCH_FULL \ # hopscotch or hopscotch-swap
 #	-DHOPSCOTCH \ # hopscotch hash
 #	-DHOPSCOTCH_PART \ # hopscotch-cache
 #	-DPART_MEM \ # hopscotch-cache: store full parts in memory
 #	-DTEST_GC \ # bigkv test gc
 #	-DREDIS \ # YCSB
+#	-DTEST_GC \ # bigkv test gc
 
 DEFS += \
 	-DCITYHASH \
@@ -37,12 +39,13 @@ DEFS += \
 	-DUNIFORM \
 	-DCDF \
 	-DREDIS \
-	-DHOPSCOTCH \
+	-DBIGKV \
+#	-DHOPSCOTCH \
 	-DHOPSCOTCH_PART \
 	-DPART_MEM \
-#	-DBIGKV \
-#	-DTEST_GC \ # bigkv test gc
-#	-DHOPSCOTCH_FULL \ # hopscotch or hopscotch-swap
+#	-DHOPSCOTCH_FULL \
+#	-DDEBUG_GC \
+#	-DTEST_GC \
 #	-DUSE_HUGEPAGE\
 #	-DYCSB \
 #	-DHOTSPOT \

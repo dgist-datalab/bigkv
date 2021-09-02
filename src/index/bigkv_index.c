@@ -388,6 +388,13 @@ int bigkv_index_set(struct kv_ops *ops, struct request *req) {
 	}
 
 	if (part->flying) {
+		if (params->write_step == BI_STEP_WRITE_PTABLE) {
+			hlr->stat.nr_write_cache_miss--;
+
+		} else if (params->write_step == BI_STEP_INIT) {
+			hlr->stat.nr_write--;
+
+		}
 		retry_req_to_hlr(hlr, req);
 		goto exit;
 	}
@@ -448,6 +455,8 @@ bi_write_ptable:
 write_kvpair:
 	cb = make_callback(hlr, req->end_req, req);
 	copy_key_to_value(&req->key, &req->value);
+	//printf("old_pba: %lu\n", old_pba);
+	//print_entry(entry, "OLD");
 	//sw_start(sw_cpy);
 	hlr->write(hlr, entry->pba, old_pba, entry->kv_size, req->value.value, cb);
 	//sw_end(sw_cpy);
@@ -482,20 +491,24 @@ static int trigger_idx_gc(struct handler* hlr, struct gc *gc) {
 	uint32_t entry_cnt = victim_seg->entry_cnt;
 	char *seg_buf = (char*)gc->buf;
 
-	uint64_t start_pba = victim_seg->start_addr / GRAIN_UNIT;
+	uint64_t start_pba = victim_seg->start_addr / GRAIN_UNIT + 32;
 	uint64_t victim_part_pba;
 	uint64_t part_idx;
 	struct hash_partition *part;
 	char *ptable_buf;
 	struct callback *cb = NULL;
+	int copy_cnt = 0;
 	
 	for (int i = 0; i < entry_cnt; i++) {
-		part_idx = *(seg_buf + i * PART_IDX_SIZE);
+		part_idx = *((uint64_t *)(seg_buf + i * PART_IDX_SIZE));
 		part = &table->part[part_idx];
 		victim_part_pba = start_pba + i * PART_TABLE_GRAINS;
 		if (part->pba == victim_part_pba) { // valid part
+			copy_cnt++;
 			ptable_buf = seg_buf + SEG_IDX_HEADER_SIZE + i * PART_TABLE_SIZE;
 			cb = make_callback(hlr, cb_idx_gc, gc);
+
+			//printf("valid_cnt: %d, part_idx: %lu part_pba: %lu\n", copy_cnt, part_idx, victim_part_pba);
 			part->pba = get_next_idx_pba(hlr, PART_TABLE_SIZE);
 			hlr->idx_write(hlr, part->pba, victim_part_pba, PART_TABLE_GRAINS, ptable_buf, cb, part_idx);
 

@@ -37,7 +37,13 @@ flush() {
 switch_dev() {
 	if [[ "$dev_path" == "/dev/nvme1n1" ]]; then
 		dev_path="/dev/nvme2n1"
-	else
+	elif [[ "$dev_path" == "/dev/nvme2n1" ]]; then
+		dev_path="/dev/nvme4n1"
+	elif [[ "$dev_path" == "/dev/nvme4n1" ]]; then
+		dev_path="/dev/nvme5n1"
+	elif [[ "$dev_path" == "/dev/nvme5n1" ]]; then
+		dev_path="/dev/nvme6n1"
+	elif [[ "$dev_path" == "/dev/nvme6n1" ]]; then
 		dev_path="/dev/nvme1n1"
 	fi
 	echo ${dev_path}
@@ -247,8 +253,8 @@ do_bulk_run() {
 
 
 do_ycsb() {
-	#for workload in workloada workloadb workloadc workloadd workloadf
-	for workload in workloadc
+	#for workload in workloadc
+	for workload in workloada workloadb workloadc workloadd workloadf
 	do
 		phase="thread1"
 		${start_server}
@@ -274,13 +280,13 @@ do_bulk_ycsb() {
 
 
 #for test in hopscotch_part
-#for test in bigkv hopscotch hopscotch_swap hopscotch_part
 #for test in hopscotch_swap 
-for test in bigkv_256gb hopscotch_part_256gb hopscotch_part_128gb
+#for test in bigkv_256gb hopscotch_part_256gb hopscotch_part_128gb
+for test in bigkv hopscotch hopscotch_swap hopscotch_part
 do
 	#for dist in small
-	#for dist in hot_0.01_0.99 hot_0.05_0.95 hot_0.1_0.9 default
-	for dist in default
+	#for dist in default
+	for dist in hot_0.01_0.99 hot_0.05_0.95 hot_0.1_0.9 default
 	do
 		output_dir_org_perf="$log_path/$test/$dist/perf"
 		output_dir_org_stat="$log_path/$test/$dist/iostat"
@@ -293,7 +299,7 @@ do
 		kill_server="kill_${test}"
 
 		do_ycsb
-		#do_bulk_ycsb
+		do_bulk_ycsb
 	done
 done
 

@@ -22,9 +22,11 @@ struct server {
 } server;
 
 static void server_exit(int sig) {
+	struct master *mas = server.mas;
+	for (int i = 0; i < mas->num_dev; i++)
+		print_hlr_stat(mas->hlr[i]);
 #ifdef CDF
 	uint64_t nr_query = 0;
-	struct master *mas = server.mas;
 	for (int i = 0; i < mas->num_dev; i++) {
 		for (int j = 0; j < CDF_TABLE_MAX; j++) {
 			mas->cdf_table[j] += mas->hlr[i]->cdf_table[j];
@@ -34,8 +36,6 @@ static void server_exit(int sig) {
 	print_cdf(mas->cdf_table, nr_query);
 	fflush(stdout);
 #endif
-	for (int i = 0; i < mas->num_dev; i++)
-		print_hlr_stat(mas->hlr[i]);
 	exit(1);
 }
 
