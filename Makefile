@@ -11,6 +11,8 @@ CFLAGS += \
 	-Wall \
 	-Wno-unused-function \
 	-std=c++11 \
+
+DBG_CFLAGS += \
 	-O0 \
 	-fsanitize=address \
 	-static-libasan \
@@ -20,7 +22,6 @@ CFLAGS += \
 #	-fsanitize=thread \
 
 LIBS += \
-	-lcityhash \
 	-lpthread \
 	-laio \
 
@@ -34,7 +35,6 @@ LIBS += \
 #	-DTEST_GC \ # bigkv test gc
 
 DEFS += \
-	-DCITYHASH \
 	-DLINUX_AIO \
 	-DUNIFORM \
 	-DCDF \
@@ -72,28 +72,37 @@ OBJ_SRC += \
 	$(SRC_DIR)/utility/art.c \
 	$(SRC_DIR)/utility/list.c \
 
+OPT_SRC += \
+	$(SRC_DIR)/platform/xxhash.c \
+
 TARGET_OBJ =\
 		$(patsubst %.c,%.o,$(OBJ_SRC))\
+
+OPT_OBJ =\
+		$(patsubst %.c,%.o,$(OPT_SRC))\
 
 all: client server
 
 client: $(SRC_DIR)/client.cc $(LIB_DIR)/libbigkv.a
 	@mkdir -p $(BIN_DIR)
-	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR) 
+	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(DBG_CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR) 
 
 server: $(SRC_DIR)/server.cc $(LIB_DIR)/libbigkv.a
 	@mkdir -p $(BIN_DIR)
-	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR)
+	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(DBG_CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR)
 
-$(LIB_DIR)/libbigkv.a: $(TARGET_OBJ)
+$(LIB_DIR)/libbigkv.a: $(TARGET_OBJ) $(OPT_OBJ)
 	@mkdir -p $(LIB_DIR)
 	@mv $(SRC_DIR)/platform/*.o $(OBJ_DIR)
 	@mv $(SRC_DIR)/index/*.o $(OBJ_DIR)
 	@mv $(SRC_DIR)/utility/*.o $(OBJ_DIR)
 	$(AR) r $@ $(OBJ_DIR)/*
 
+$(TARGET_OBJ): EXTRA_FLAGS := $(DBG_CFLAGS)
+$(OPT_OBJ): EXTRA_FLAGS := -O3 -mavx2
+
 .c.o:
-	$(CC) $(CFLAGS) $(LIBS) $(DEFS) -c $< -o $@ -I$(INC_DIR)
+	$(CC) $(CFLAGS) $(EXTRA_FLAGS) $(LIBS) $(DEFS) -c $< -o $@ -I$(INC_DIR)
 
 clean:
 	@rm -vf $(BIN_DIR)/*

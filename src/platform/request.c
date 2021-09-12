@@ -34,7 +34,7 @@ static int set_value(struct val_struct *value, int len, char *input_val) {
 
 struct request *
 make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_type_t type) {
-	uint128 hash128;
+	XXH128_hash_t hash128;
 	struct request *req = (struct request *)q_dequeue(hlr->req_pool);
 
 	req->type = type;
@@ -44,9 +44,8 @@ make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_t
 	req->key.len = cli->args_size[1];
 	memcpy(req->key.key, cli->args[1], req->key.len);
 	hash128 = hashing_key_128(req->key.key, req->key.len);
-	req->key.hash_low = hash128.first;
-	req->key.hash_high = hash128.second;
-
+	req->key.hash_low = hash128.low64;
+	req->key.hash_high = hash128.high64;
 
 	// args[3]: value
 	//printf("%d\n", type);
@@ -110,9 +109,9 @@ make_request_from_netreq(struct handler *hlr, struct netreq *nr, int sock) {
 
 void
 add_request_info(struct request *req) {
-	uint128 hash128 = hashing_key_128(req->key.key, req->key.len);
-	req->key.hash_low = hash128.first;
-	req->key.hash_high = hash128.second;
+	XXH128_hash_t hash128 = hashing_key_128(req->key.key, req->key.len);
+	req->key.hash_low = hash128.low64;
+	req->key.hash_high = hash128.high64;
 
 	switch (req->type) {
 	case REQ_TYPE_GET:

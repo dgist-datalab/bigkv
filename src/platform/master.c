@@ -210,7 +210,7 @@ static int __process_request(struct master *mas, int fd) {
 	for (int i = 0; i < n_obj; i++) {
 		// TODO: request handling
 		struct netreq *nr = &mas->netreq_buf[i];
-		hash_high = hashing_key_128(nr->key, nr->keylen).first;
+		hash_high = hashing_key_128(nr->key, nr->keylen).high64;
 		hlr_idx = (hash_high >> 32) % mas->num_dev;
 
 		struct request *req = make_request_from_netreq(mas->hlr[hlr_idx], nr, fd);
@@ -237,7 +237,7 @@ static int __netreq_parse_and_make_request (struct master *mas, int fd) {
 	for (int i = 0; i < n_obj; i++) {
 		// TODO: request handling
 		struct netreq *nr = netreq_buf + i;
-		hash_high = hashing_key_128(nr->key, nr->keylen).first;
+		hash_high = hashing_key_128(nr->key, nr->keylen).high64;
 		hlr_idx = (hash_high >> 32) % mas->num_dev;
 
 		struct request *req = make_request_from_netreq(mas->hlr[hlr_idx], nr, fd);
@@ -281,7 +281,7 @@ static int __redis_parse_and_make_request (struct master *mas, int fd) {
 		}
 
 		// args[1]: key
-		hash_high = hashing_key_128((char*)cli->args[1], cli->args_size[1]).first;
+		hash_high = hashing_key_128((char*)cli->args[1], cli->args_size[1]).high64;
 		hlr_idx = (hash_high >> 32) % mas->num_dev;
 
 		struct request *req = make_request_from_redis(mas->hlr[hlr_idx], cli, fd, type);
