@@ -12,7 +12,8 @@
 #include <time.h>
 #include <sys/types.h>
 #include <semaphore.h>
-#include <city.h>
+
+typedef unsigned __int128 uint128_t;
 
 /*struct net_req {
 	req_type_t type;
@@ -29,7 +30,7 @@ struct net_ack {
 }; */
 
 uint64_t hashing_key(char *key, uint8_t len);
-uint128 hashing_key_128(char *key, uint8_t len);
+uint128_t hashing_key_128(char *key, uint8_t len);
 
 ssize_t read_sock(int sock, void *buf, ssize_t count);
 ssize_t read_sock_bulk(int sock, void *buf, ssize_t count, ssize_t align);
