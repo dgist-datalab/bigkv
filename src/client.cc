@@ -1,11 +1,15 @@
 #include "config.h"
-#include "platform/keygen.h"
 #include "platform/util.h"
 #include "utility/stopwatch.h"
 
+#include <errno.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <semaphore.h>
@@ -38,7 +42,6 @@
 
 bool stopflag;
 
-struct keygen *kg;
 int sock;
 pthread_t tid;
 uint32_t seq_num_global;
@@ -48,14 +51,15 @@ uint64_t cdf_table[CDF_TABLE_MAX];
 stopwatch *sw;
 sem_t sem;
 
+static void close_trace(void);
 
 static int bench_free() {
 	sleep(5);
 	stopflag=true;
 	int *temp;
 	while (pthread_tryjoin_np(tid, (void **)&temp)) {}
-	keygen_free(kg);
 	close(sock);
+	close_trace();
 	return 0;
 }
 
@@ -102,8 +106,6 @@ void *ack_poller(void *arg) {
 }
 
 static int bench_init() {
-	kg = keygen_init(NR_KEY, KEY_LEN);
-
 	sem_init(&sem, 0, CLIENT_QDEPTH);
 
 	pthread_create(&tid, NULL, &ack_poller, NULL);
@@ -134,53 +136,207 @@ static int connect_server() {
 	return 0;
 }
 
-struct netreq nr_arr[128];
+#define XXH_STATIC_LINKING_ONLY
+#define XXH_IMPLEMENTATION
+#define XXH_INLINE_ALL
+#include "platform/xxhash.h"
 
-static int load_kvpairs() {
-	for (int i = 0; i < 128; i++) {
-		nr_arr[i].keylen  = KEY_LEN;
-		nr_arr[i].type    = REQ_TYPE_SET;
-		nr_arr[i].kv_size = VALUE_LEN;
+struct titem {
+	int timestamp;
+	char key[128];
+	int key_size;
+	int value_size;
+	int client_id;
+	int op;
+	int ttl;
+};
+
+// We can't use enum here as it's 64-bit
+#define H_SET		14527620346409587884UL
+#define H_GET		15044932803361617835UL
+#define H_DELETE	 4817649594423435005UL
+#define H_GETS		 5205206981515762381UL
+#define H_ADD		18425161627894713984UL
+#define H_REPLACE	 7630174865538825181UL
+#define H_CAS		15353879888721228789UL
+#define H_APPEND	 1418217033154176949UL
+#define H_PREPEND	 3181235489723104214UL
+#define H_INCR		 4353100097886328392UL
+#define H_DECR		17022530745781332774UL
+
+enum op {
+	OP_SET = 0,
+	OP_GET = 1,
+	OP_DELETE = 2
+};
+
+static char *mmap_addr;
+static size_t mmap_length;
+static int total_items;
+
+static void open_trace(const char *trace_path)
+{
+	int fd;
+	struct stat st;
+
+	/* get trace file info */
+	if ((fd = open(trace_path, O_RDONLY)) < 0) {
+		fprintf(stderr,"Unable to open '%s', %s\n", trace_path, strerror(errno));
+		exit(1);
 	}
 
-	sw_start(sw);
-	for (size_t i = 0; i < NR_KEY;) {
-		if (i%(NR_KEY/100)==0) {
-			printf("\rProgress [%2.0f%%] (%lu/%d)",
-				(float)i/NR_KEY*100, i, NR_KEY);
-			fflush(stdout);
-		}
-
-		int j;
-		for (j = 0; j < 128; i++, j++) {
-			kg_key_t next_key = get_next_key_for_load(kg);
-			if (next_key == NULL) {
-				break;
-			}
-			req_in(&sem);
-			memcpy(nr_arr[j].key, next_key, KEY_LEN);
-			nr_arr[j].seq_num = ++seq_num_global;
-		}
-		send_request_bulk(sock, nr_arr,j);
+	if ((fstat(fd, &st)) < 0) {
+		close(fd);
+		fprintf(stderr, "Unable to fstat '%s', %s\n", trace_path, strerror(errno));
+		exit(1);
 	}
-	wait_until_finish(&sem, CLIENT_QDEPTH);
-	sw_end(sw);
 
-	puts("\nLoad finished!");
-	printf("%.4f seconds elapsed...\n", sw_get_sec(sw));
-	printf("Throughput(IOPS): %.2f\n\n", (double)NR_KEY/sw_get_sec(sw));
+	/* set up mmap region */
+	mmap_addr = (char *)mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+	if (mmap_addr == MAP_FAILED) {
+		close(fd);
+		fprintf(stderr, "Unable to allocate %zu bytes of memory, %s\n", st.st_size,
+				strerror(errno));
+		exit(1);
+	}
+	mmap_length = st.st_size;
+
+	/* USE_HUGEPAGE */
+	madvise(mmap_addr, st.st_size, MADV_HUGEPAGE | MADV_SEQUENTIAL);
+
+	close(fd);
+}
+
+static void close_trace(void)
+{
+	munmap(mmap_addr, mmap_length);
+}
+
+static inline int fast_atoi(const char *str, const char delim)
+{
+	int val = 0;
+	while (*str != delim)
+		val = val * 10 + (*str++ - '0');
+	return val;
+}
+
+static inline void dump_item(const struct titem *item)
+{
+	putchar('\n');
+	printf("timestamp:  %d\n", item->timestamp);
+	printf("key:       \"%s\"\n", item->key);
+	printf("key_size:   %d\n", item->key_size);
+	printf("value_size: %d\n", item->value_size);
+	printf("client_id:  %d\n", item->client_id);
+	printf("op:         %d\n", item->op);
+	printf("ttl:        %d\n", item->ttl);
+	putchar('\n');
+}
+
+static int read_next(struct netreq *netreq)
+{
+	static size_t offset;
+	if (offset >= mmap_length)
+		return 1;
+
+	int oplen = 0;
+	char *addr;
+	XXH64_hash_t ophash;
+
+	addr = mmap_addr + offset;
+
+	// Initialize netreq
+	memset(netreq, 0, sizeof(struct netreq));
+
+	// Skip timestamp
+	while (*addr++ != ',');
+
+	// Read anonymized key
+	while (*addr != ',') {
+		netreq->keylen++;
+		addr++;
+	}
+	memcpy(netreq->key, addr - netreq->keylen, netreq->keylen);
+	*(netreq->key + netreq->keylen) = '\0';
+	addr++;
+
+	// Skip key size
+	while (*addr++ != ',');
+
+	// Read value size
+	while (*addr != ',')
+		netreq->kv_size = netreq->kv_size * 10 + (*addr++ - '0');
+	addr++;
+
+	// Skip client id
+	while (*addr++ != ',');
+
+	// Read operation string and compare via xxHash
+	while (*addr != ',') {
+		oplen++;
+		addr++;
+	}
+	ophash = XXH3_64bits(addr - oplen, oplen);
+
+	switch (ophash) {
+	case H_SET:
+		netreq->type = REQ_TYPE_SET;
+		break;
+	case H_GET:
+		netreq->type = REQ_TYPE_GET;
+		break;
+	case H_DELETE:
+		netreq->type = REQ_TYPE_DELETE;
+		break;
+	case H_GETS:
+	case H_ADD:
+	case H_REPLACE:
+	case H_CAS:
+	case H_APPEND:
+	case H_PREPEND:
+	case H_INCR:
+	case H_DECR:
+		//printf("Ignoring \"");
+		goto skip_silent;
+	default:
+		printf("Unrecognized operation: \"");
+		goto skip;
+	}
+
+	addr++;
+
+	// Skip TTL
+	while (*addr++ != '\n');
+
+	// Update offset
+	offset = addr - mmap_addr;
+
+	total_items++;
+
+	// printf("\rOffset: %lu", offset);
+
+	// Dump item
+	//dump_item(&item);
+
+	return 0;
+
+skip:
+	fwrite(addr - oplen, oplen, 1, stdout);
+	puts("\"");
+
+skip_silent:
+	while (*addr++ != '\n');
+
+	// Update offset
+	offset = addr - mmap_addr;
 
 	return 0;
 }
 
-static int run_bench(key_dist_t dist, int query_ratio, int hotset_ratio) {
+struct netreq nr_arr[128];
+
+static int run_bench(void) {
 	struct netreq netreq;
-
-	netreq.keylen = KEY_LEN;
-	netreq.type = REQ_TYPE_GET;
-	netreq.kv_size = VALUE_LEN;
-
-	set_key_dist(kg, dist, query_ratio, hotset_ratio);
 
 	sw_start(sw);
 	for (size_t i = 0; i < NR_QUERY; i++) {
@@ -189,9 +345,11 @@ static int run_bench(key_dist_t dist, int query_ratio, int hotset_ratio) {
 				(float)i/NR_QUERY*100,i,NR_QUERY);
 			fflush(stdout);
 		}
+
+		if (read_next(&netreq) != 0)
+			break;
+
 		req_in(&sem);
-		//memcpy(netreq.key, get_next_key(kg), KEY_LEN);
-		memcpy(netreq.key, get_next_key_for_load(kg), KEY_LEN);
 		netreq.seq_num = ++seq_num_global;
 		send_request(sock, &netreq);
 	}
@@ -214,24 +372,11 @@ int main(int argc, char *argv[]) {
 	/* Connect to server */
 	connect_server();
 
-	/* Load phase */
-#ifdef TEST_GC
-	load_kvpairs();
-	//load_kvpairs();
-	//load_kvpairs();
-	//load_kvpairs();
-	//load_kvpairs();
-#endif
-	load_kvpairs();
+	/* Load trace file */
+	open_trace(argv[1]);
 
 	/* Benchmark phase */
-	run_bench(KEY_DIST_UNIFORM, 50, 50);
-//	run_bench(KEY_DIST_UNIFORM, 50, 50);
-//	run_bench(KEY_DIST_LOCALITY, 60, 40);
-//	run_bench(KEY_DIST_LOCALITY, 70, 30);
-//	run_bench(KEY_DIST_LOCALITY, 80, 20);
-//	run_bench(KEY_DIST_LOCALITY, 90, 10); 
-//	run_bench(KEY_DIST_LOCALITY, 99, 1);
+	run_bench();
 
 	bench_free();
 	return 0;
