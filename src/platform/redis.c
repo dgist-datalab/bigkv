@@ -156,22 +156,29 @@ void redis_flush(struct client *cli){
 #endif
 
 static void redis_write(int sock, const char *data, int n){
-	write(sock, data, n);
+	if (write(sock, data, n) < 0)
+		abort();
 }
 
 void redis_write_multibulk(int sock, int n){
-	char h[32];
-	sprintf(h, "*%d\r\n", n);
-	redis_write(sock, h, strlen(h));
+	//char h[32];
+	//sprintf(h, "*%d\r\n", n);
+	//redis_write(sock, h, strlen(h));
+
+	if (write(sock, "*1\r\n$-1\r\n", 9) < 0)
+		abort();
 }
 
 void redis_write_ok(int sock) {
-	write(sock, "+OK\r\n", 5);
+	if (write(sock, "+OK\r\n", 5) < 0)
+		abort();
 }
 
 void redis_write_empty_array(int sock) {
-	write(sock, "*0\r\n", 4);
+	if (write(sock, "*0\r\n", 4) < 0)
+		abort();
 }
+
 
 void redis_err_alloc(struct client *cli, int n){
 	if (cli->tmp_err){

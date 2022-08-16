@@ -71,13 +71,13 @@ ssize_t read_sock_bulk_circular(int sock, void *buf, ssize_t buf_size, ssize_t b
 		if (buf_len == 0) {
 			return -1;
 		} else {
-			fprintf(stderr, "sock buf remain! len: %zu\n", len);
+			fprintf(stderr, "sock buf remain! len -1: %zu\n", len);
 			return 0;
 		}
 
 	} else if (len == 0) {
 		if (buf_len > 0) {
-			fprintf(stderr, "sock buf remain! len: %zu\n", len);
+			fprintf(stderr, "sock buf remain! len 0: %zu\n", len);
 		}
 		return 0;
 	}
@@ -151,7 +151,8 @@ ssize_t recv_ack(int sock, struct netack *na) {
 }
 
 void collect_latency(uint64_t table[], time_t latency) {
-	if (latency != -1) table[latency/10]++;
+	if (latency < CDF_TABLE_MAX)
+		if (latency != -1) table[latency]++;
 }
 
 void print_cdf(uint64_t table[], uint64_t nr_query) {
@@ -161,11 +162,48 @@ void print_cdf(uint64_t table[], uint64_t nr_query) {
 		if (table[i] != 0) {
 			cdf_sum += table[i];
 			printf("%d,%lu,%.6f\n",
-				i*10, table[i], (float)cdf_sum/nr_query);
+				i, table[i], (float)cdf_sum/nr_query);
 			table[i] = 0;
 		}
 	}
 }
+
+void collect_io_count(uint64_t table[], uint64_t cnt) {
+	if (cnt < CDF_TABLE_MAX)
+		table[cnt]++;
+}
+
+void print_io_cdf(uint64_t table[], uint64_t nr_query) {
+	uint64_t cdf_sum = 0;
+	printf("#io_count,cnt,cdf\n");
+	for (int i = 0; i < CDF_TABLE_MAX && cdf_sum != nr_query; i++) {
+		if (table[i] != 0) {
+			cdf_sum += table[i];
+			printf("%d,%lu,%.6f\n",
+				i, table[i], (float)cdf_sum/nr_query);
+			table[i] = 0;
+		}
+	}
+}
+
+void collect_io_bytes(uint64_t table[], uint64_t bytes) {
+	if (bytes/4096 < CDF_TABLE_MAX)
+		table[bytes/4096]++;
+}
+
+void print_io_bytes_cdf(uint64_t table[], uint64_t nr_query) {
+	uint64_t cdf_sum = 0;
+	printf("#io_bytes(4K),cnt,cdf\n");
+	for (int i = 0; i < CDF_TABLE_MAX && cdf_sum != nr_query; i++) {
+		if (table[i] != 0) {
+			cdf_sum += table[i];
+			printf("%d,%lu,%.6f\n",
+				i, table[i], (float)cdf_sum/nr_query);
+			table[i] = 0;
+		}
+	}
+}
+
 
 int req_in(sem_t *sem_lock) {
 	return sem_wait(sem_lock);

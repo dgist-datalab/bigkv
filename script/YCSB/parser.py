@@ -8,13 +8,18 @@ import sys
 # hopscotch_part: caching
 # hopscotch_mem: OPT
 # bigkv: bigkv
-#indexing_list = ["hopscotch", "hopscotch_part", "bigkv", "hopscotch_swap"]  
+#indexing_list = ["hopscotch", "hopscotch_part", "bigkv", "cascade"]  
+indexing_list = ["hopscotch", "hopscotch_part", "bigkv", "cascade"]  
 #indexing_list = ["hopscotch", "bigkv", "hopscotch_swap"]  
-indexing_list = ["hopscotch_swap"]  
-dist_list = ["default", "hot_0.1_0.9", "hot_0.05_0.95", "hot_0.01_0.99"]  
-workload_load_list = ["workloada-load", "workloadb-load", "workloadc-load", "workloadd-load", "workloadf-load"] 
-workload_run_list = ["workloada-bulk-run", "workloadb-bulk-run", "workloadc-bulk-run", "workloadd-bulk-run", "workloadf-bulk-run"]  
-#workload_run_list = ["workloada-run", "workloadb-run", "workloadc-run", "workloadd-run", "workloadf-run"]  
+#indexing_list = ["hopscotch_swap"]  
+#dist_list = ["default", "hot_0.1_0.9", "hot_0.05_0.95", "hot_0.01_0.99"]  
+dist_list = ["hot_0.1_0.9", "hot_0.05_0.95", "hot_0.01_0.99"]  
+#dist_list = ["default", "hot_0.01_0.99"]
+#workload_load_list = ["workloada-load", "workloadb-load", "workloadc-load", "workloadd-load", "workloadf-load"] 
+workload_load_list = ["workloadb-load"] 
+#workload_run_list = ["workloada-bulk-run", "workloadb-bulk-run", "workloadc-bulk-run", "workloadd-bulk-run", "workloadf-bulk-run"]  
+workload_run_list = ["workloadb-bulk-run"]  
+#workload_run_list = ["workloada-run", "workloadb-run", "workloadc-run"]
 
 def search (log_dir_name, metric):
     full_workload_list = list()
@@ -44,7 +49,7 @@ def make_dat_dirs (dat_dir_name, indexing_dist_set):
         print(dist_dir_name)
         os.makedirs(dist_dir_name, exist_ok=True)
 
-def cut_latency_data (src_file_name, dst_file_name, pivot_str):
+def cut_cdf_data (src_file_name, dst_file_name, pivot_str, end_str):
     src_file = open(src_file_name, 'r')
     os.makedirs(os.path.dirname(dst_file_name), exist_ok=True)
     dst_file = open(dst_file_name, 'w')
@@ -62,10 +67,12 @@ def cut_latency_data (src_file_name, dst_file_name, pivot_str):
             continue
         else:
             while True:
-                dst_file.write(line)
                 line = src_file.readline()
                 if not line:
                     break
+                if end_str in line:
+                    break
+                dst_file.write(line)
         break
     src_file.close()
     dst_file.close()
@@ -89,6 +96,7 @@ def cut_throughput_data (src_file_name, dst_file_name, pivot_str, indexing_name,
             throughput = tmp_str.split()[-1]
             key = indexing_name + dist_name + workload_name
             throughput_dict[key]= throughput
+            print(key)
             #print(throughput_dict[indexing_name])
 #                line = src_file.readline()
 #                if not line:
@@ -106,20 +114,20 @@ def write_throughput_data(dst_file_base, throughput_dict):
             dst_file = open(dst_file_name, 'w')
             for workload_name in workload_load_list:
                 key = indexing_name + dist_name + workload_name
-                dst_file.write(workload_name[8:9] + "\t" + throughput_dict[key] + "\n")
+                dst_file.write("YCSB-" + workload_name[8:9].upper() + "\t" + throughput_dict[key] + "\n")
                 print(throughput_dict[key])
             #print(throughput_dict[indexing_name])
             dst_file.close()
 
     for indexing_name in indexing_list:
         for dist_name in dist_list:
-            dst_file_name = dst_file_base + "/" + dist_name + "/" + indexing_name + "-bulk-run.dat"
+            dst_file_name = dst_file_base + "/" + dist_name + "/" + indexing_name + "-run.dat"
             print(dst_file_name)
             os.makedirs(os.path.dirname(dst_file_name), exist_ok=True)
             dst_file = open(dst_file_name, 'w')
             for workload_name in workload_run_list:
                 key = indexing_name + dist_name + workload_name
-                dst_file.write(workload_name[8:9] + "\t" + throughput_dict[key] + "\n")
+                dst_file.write("YCSB-" + workload_name[8:9].upper() + "\t" + throughput_dict[key] + "\n")
                 print(throughput_dict[key])
             #print(throughput_dict[indexing_name])
             dst_file.close()
@@ -134,14 +142,20 @@ def parse_perf (dat_dir_name, indexing_dist_set, full_workload_list, metric_name
         indexing_name = workload_chunks[-4]
         dist_name = workload_chunks[-3]
         workload_name = workload_chunks[-1]
-        if metric_name == "perf":
-            dst_file_name = os.path.abspath(dat_dir_name) + "/latency" + "/" + indexing_name + "/" + dist_name + "/" + workload_name + ".dat"
-            cut_latency_data(workload_full_name, dst_file_name, "latency")
-        if metric_name == "ycsb":
-            dst_file_name = os.path.abspath(dat_dir_name) + "/throughput" 
+        if metric_name == "latency":
+            dst_file_name = os.path.abspath(dat_dir_name) + "/perf" + "/" + indexing_name + "/" + dist_name + "/" + workload_name + "-latency.dat"
+            cut_cdf_data(workload_full_name, dst_file_name, "latency", "cdf")
+        if metric_name == "throughput":
+            dst_file_name = os.path.abspath(dat_dir_name) + "/ycsb" 
             throughput_dict = cut_throughput_data(workload_full_name, dst_file_name, "Throughput", indexing_name, dist_name, workload_name, throughput_dict)
+        if metric_name == "io_bytes":
+            dst_file_name = os.path.abspath(dat_dir_name) + "/perf" + "/" + indexing_name + "/" + dist_name + "/" + workload_name + "-io_bytes.dat"
+            cut_cdf_data(workload_full_name, dst_file_name, "io_bytes", "cdf")
+        if metric_name == "io_count":
+            dst_file_name = os.path.abspath(dat_dir_name) + "/perf" + "/" + indexing_name + "/" + dist_name + "/" + workload_name + "-io_count.dat"
+            cut_cdf_data(workload_full_name, dst_file_name, "io_count", "cdf")
 
-    if metric_name == "ycsb":
+    if metric_name == "throughput":
         write_throughput_data(dst_file_name, throughput_dict)
 #        print(dst_file_name)
 #        print(dist_dir_name)
@@ -158,5 +172,10 @@ metric_name = sys.argv[3]
 
 print(os.path.abspath(dat_dir_name))
 
-full_workload_list, indexing_dist_set = search(log_dir_name, metric_name)
+if metric_name == "throughput":
+    metric_file = "ycsb"
+else:
+    metric_file = "perf"
+
+full_workload_list, indexing_dist_set = search(log_dir_name, metric_file)
 parse_perf(dat_dir_name, indexing_dist_set, full_workload_list, metric_name)

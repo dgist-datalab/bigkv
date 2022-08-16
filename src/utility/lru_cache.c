@@ -20,6 +20,17 @@ lru_node* lru_push(LRU* lru, void* table_ptr){
 	lru_node *now = (lru_node*)malloc(sizeof(lru_node));
 	now->data = table_ptr;
 	now->next = now->prev = NULL;
+
+	if(lru->retrieve_key){
+		uint32_t key=lru->retrieve_key(table_ptr);
+		if(art_insert_no_replace(&lru->map, (const unsigned char*)&key, sizeof(key), now->data)){
+			printf("already exist key:%u in lru map", key);
+			free(now);
+			return NULL;
+			abort();
+		}
+	}
+
 	if(lru->size == 0){
 		lru->head = lru->tail = now;
 	}
@@ -27,14 +38,6 @@ lru_node* lru_push(LRU* lru, void* table_ptr){
 		lru->head->prev = now;
 		now->next = lru->head;
 		lru->head = now;
-	}
-
-	if(lru->retrieve_key){
-		uint32_t key=lru->retrieve_key(table_ptr);
-		if(art_insert(&lru->map, (const unsigned char*)&key, sizeof(key), now->data)){
-			printf("already exist key:%u in lru map", key);
-			abort();
-		}
 	}
 
 	lru->size++;

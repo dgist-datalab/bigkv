@@ -2,19 +2,23 @@ SRC_DIR = ./src
 OBJ_DIR = ./obj
 LIB_DIR = ./lib
 BIN_DIR = ./bin
-INC_DIR = ./include
+INC_DIR = ./include \
+		  -I ./../liburing/src/include \
+		  -I ./../spdk/include \
 
 CC = g++
 
 CFLAGS += \
-	-g \
 	-Wall \
+	-g \
 	-Wno-unused-function \
+	-Wno-unused \
 	-std=c++11 \
-	-O0 \
+	-O2 \
+#	-O0 \
 	-fsanitize=address \
 	-static-libasan \
-#	-O2 \
+#	-pg \
 #	-fsanitize=undefined \
 #	-fsanitize=address \
 #	-fsanitize=thread \
@@ -23,7 +27,22 @@ LIBS += \
 	-lcityhash \
 	-lpthread \
 	-laio \
-
+	-lnuma \
+	-L./../liburing/src -luring \
+	-lspdk \
+	-lspdk_env_dpdk \
+	-lspdk_env_dpdk_rpc \
+	-ldpdk \
+	-lspdk_nvme \
+	-lspdk_util \
+	-lspdk_event \
+	-lspdk_sock \
+	-lspdk_log \
+	-lspdk_json \
+	-lspdk_jsonrpc \
+	-lspdk_rpc \
+	-L./../spdk/dpdk/build/lib -lrte_eal \
+	-L./../spdk/dpdk/build/lib -lrte_telemetry \
 
 #	-DHOPSCOTCH_FULL \ # hopscotch or hopscotch-swap
 #	-DHOPSCOTCH \ # hopscotch hash
@@ -31,28 +50,51 @@ LIBS += \
 #	-DPART_MEM \ # hopscotch-cache: store full parts in memory
 #	-DTEST_GC \ # bigkv test gc
 #	-DREDIS \ # YCSB
+#	-DTRACE \ # twitter
 #	-DTEST_GC \ # bigkv test gc
 
 DEFS += \
 	-DCITYHASH \
-	-DLINUX_AIO \
 	-DUNIFORM \
 	-DCDF \
+	-DAMF_CDF \
+	-DPER_CORE \
+	-DCPU_PIN_NUMA \
+	-DLINUX_AIO \
 	-DREDIS \
 	-DBIGKV \
+#	-DTRACE \
+#	-DTTL \
+#	-DHOPSCOTCH \
+	-DHOPSCOTCH_FULL \
+#	-DTTL_GROUP \
 #	-DHOPSCOTCH \
 	-DHOPSCOTCH_PART \
 	-DPART_MEM \
+#	-DCASCADE \
+#	-DCASCADE_DEBUG \
+#	-DHOPSCOTCH \
+	-DHOPSCOTCH_FULL \
+#	-DTEST_GC \
+#	-DHLR_POLLING \
+#	-DDEV_SPDK \
+#	-DPRINT_QD \
+#	-DBREAKDOWN \
+#	-DUSE_HUGEPAGE\
+#	-DURING \
+#	-DLINUX_AIO \
+#	-DCPU_PIN \
+#	-DRAMDISK \
+#	-DTABLE_LOCK \
+	-DRAND_TTL \
 #	-DHOPSCOTCH_FULL \
 #	-DDEBUG_GC \
-#	-DTEST_GC \
-#	-DUSE_HUGEPAGE\
-#	-DYCSB \
 #	-DHOTSPOT \
 
 OBJ_SRC += \
 	$(SRC_DIR)/index/hopscotch.c \
 	$(SRC_DIR)/index/bigkv_index.c \
+	$(SRC_DIR)/index/cascade.c \
 	$(SRC_DIR)/platform/util.c \
 	$(SRC_DIR)/platform/keygen.c \
 	$(SRC_DIR)/platform/master.c \
@@ -63,6 +105,8 @@ OBJ_SRC += \
 	$(SRC_DIR)/platform/device.c \
 	$(SRC_DIR)/platform/poller.c \
 	$(SRC_DIR)/platform/aio.c \
+	$(SRC_DIR)/platform/uring.c \
+	$(SRC_DIR)/platform/dev_spdk.c \
 	$(SRC_DIR)/platform/redis.c \
 	$(SRC_DIR)/platform/redis_exec.c \
 	$(SRC_DIR)/utility/queue.c \
@@ -71,19 +115,34 @@ OBJ_SRC += \
 	$(SRC_DIR)/utility/lru_cache.c \
 	$(SRC_DIR)/utility/art.c \
 	$(SRC_DIR)/utility/list.c \
+	$(SRC_DIR)/utility/ttl.c \
+	$(SRC_DIR)/utility/bloomfilter.c \
+	$(SRC_DIR)/utility/murmur3.c \
 
 TARGET_OBJ =\
 		$(patsubst %.c,%.o,$(OBJ_SRC))\
 
-all: client server
-
+all: client server load run tracer
 client: $(SRC_DIR)/client.cc $(LIB_DIR)/libbigkv.a
+	@mkdir -p $(BIN_DIR)
+	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR) 
+
+load: $(SRC_DIR)/client_load.cc $(LIB_DIR)/libbigkv.a
+	@mkdir -p $(BIN_DIR)
+	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR) 
+
+run: $(SRC_DIR)/client_run.cc $(LIB_DIR)/libbigkv.a
 	@mkdir -p $(BIN_DIR)
 	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR) 
 
 server: $(SRC_DIR)/server.cc $(LIB_DIR)/libbigkv.a
 	@mkdir -p $(BIN_DIR)
 	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR)
+
+tracer: $(SRC_DIR)/trace_main.cc $(LIB_DIR)/libbigkv.a
+	@mkdir -p $(BIN_DIR)
+	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(DEFS) -I$(INC_DIR)
+
 
 $(LIB_DIR)/libbigkv.a: $(TARGET_OBJ)
 	@mkdir -p $(LIB_DIR)

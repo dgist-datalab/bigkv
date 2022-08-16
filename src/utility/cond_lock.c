@@ -1,5 +1,6 @@
 #include "utility/cond_lock.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 cl_lock *cl_init(int cnt, bool zero_lock){
 	cl_lock *res=(cl_lock*)malloc(sizeof(cl_lock));

@@ -16,13 +16,18 @@
 #ifdef TEST_GC
 //#define NR_KEY (10 * 1000 * 1000)
 //#define NR_QUERY (10 * 1000 * 1000)
-
 #define NR_KEY (10 * 1000 * 1000)
 #define NR_QUERY (10 * 1000 * 1000)
-
 #else
-#define NR_KEY   500000
-#define NR_QUERY 100000
+#define NR_KEY   10000000
+#define NR_QUERY 2000000
+
+//#define NR_KEY   200000
+//#define NR_QUERY 100000
+//#define NR_KEY   100
+//#define NR_QUERY 100
+//#define NR_KEY   10000
+//#define NR_QUERY 10000
 #endif
 //#define NR_KEY   50000000
 //#define NR_QUERY 50000000
@@ -102,7 +107,7 @@ void *ack_poller(void *arg) {
 }
 
 static int bench_init() {
-	kg = keygen_init(NR_KEY, KEY_LEN);
+	kg = keygen_init(NR_KEY, KEY_LEN, "user");
 
 	sem_init(&sem, 0, CLIENT_QDEPTH);
 
@@ -190,8 +195,8 @@ static int run_bench(key_dist_t dist, int query_ratio, int hotset_ratio) {
 			fflush(stdout);
 		}
 		req_in(&sem);
-		//memcpy(netreq.key, get_next_key(kg), KEY_LEN);
-		memcpy(netreq.key, get_next_key_for_load(kg), KEY_LEN);
+		memcpy(netreq.key, get_next_key(kg), KEY_LEN);
+		//memcpy(netreq.key, get_next_key_for_load(kg), KEY_LEN);
 		netreq.seq_num = ++seq_num_global;
 		send_request(sock, &netreq);
 	}

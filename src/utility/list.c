@@ -31,6 +31,61 @@ li_node *list_insert(list *li, void *data){
 	return t;
 }
 
+li_node *list_insert_head(list *li, void *data) {
+	li_node *t = new_li_node(data);
+	li->size++;
+	if(!li->head) {
+		li->head=li->tail=t;
+		return t;
+	}
+
+	t->nxt = li->head;
+	li->head->prv=t;
+	li->head=t;
+	return t;
+}
+
+li_node *list_insert_prv_node(list *li, li_node *node, void *data) {
+	if (node == NULL) {
+		abort();
+		return NULL;
+	}
+
+	if(node == li->head)
+		return list_insert_head(li, data);
+
+	li_node *t = new_li_node(data);
+	li->size++;
+
+	li_node *prv=node->prv;
+	prv->nxt = t;
+	node->prv = t;
+	t->prv = prv;
+	t->nxt = node;
+	return t;
+}
+
+li_node *list_insert_nxt_node(list *li, li_node *node, void *data) {
+	if (node == NULL) {
+		abort();
+		return NULL;
+	}
+
+	if(node == li->tail)
+		return list_insert(li, data);
+
+	li_node *t = new_li_node(data);
+	li->size++;
+
+	li_node *nxt=node->nxt;
+	nxt->prv = t;
+	node->nxt = t;
+	t->prv = node;
+	t->nxt = nxt;
+	return t;
+}
+
+
 void list_move_to_tail(list *li, li_node* t){
 	if (t==li->tail)
 		return;
@@ -91,8 +146,12 @@ void list_delete_node(list *li, li_node* t){
 
 void list_free(list *li){
 	li_node *now, *nxt;
+	void *data;
 	if(li->size){
 		list_for_each_node_safe(li,now,nxt){
+			data = now->data;
+			if (data)
+				free(data);
 			list_delete_node(li,now);
 		}
 	}

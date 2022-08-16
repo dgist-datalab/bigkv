@@ -1,23 +1,23 @@
-#ifndef __H_QUEUE_Q_
-#define __H_QUEUE_Q_
+#ifndef __H_LFQUEUE_Q_
+#define __H_LFQUEUE_Q_
 	
 #include <pthread.h>
 
-typedef struct node{
+typedef struct lfq_node{
 	void *n;
-	struct node *next;
-}node;
+	struct lfq_node *next;
+}lfq_node;
 
-typedef struct queue{
+typedef struct lfqueue{
 	int size;
 	int m_size;
-	node *head;
-	node *tail;
-}queue;
+	lfq_node *head;
+	lfq_node *tail;
+}lfqueue;
 
-void lfq_init(queue**,int);
-int lfq_enqueue(void *,queue*);
-void *lfq_dequeue(queue*);
-void lfq_free(queue*);
+void lfq_init(lfqueue**,int);
+int lfq_enqueue(void *,lfqueue*);
+void *lfq_dequeue(lfqueue*);
+void lfq_free(lfqueue*);
 
 #endif

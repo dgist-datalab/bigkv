@@ -26,16 +26,24 @@ using namespace std;
 #endif
 #include <stdint.h>
 
+#define NUM_CPU 1
+
+#ifdef TTL
+#define HASH_ENTRY_BYTES 16
+#else
 #define HASH_ENTRY_BYTES 8
+#endif
+
 //#define IDX_BIT 27 // can index a 128 GB stroage device
-#define IDX_BIT 28 // can idx a 256 GB storage device
+//#define IDX_BIT 27 // can idx a 512 GB storage device with 4 KB KV
+#define IDX_BIT 28ULL // can idx a 1024 GB storage device with 4 KB KV
 #define DIR_BIT 0 // 1 ==> 2GB
 #define NR_TABLE (1 << DIR_BIT)
 #define NR_ENTRY (1ULL << IDX_BIT)
-#define NR_PART (NR_ENTRY/PAGESIZE*HASH_ENTRY_BYTES)
+#define NR_PART (NR_ENTRY/PAGESIZE*HASH_ENTRY_BYTES) // for 1TB, 18승개 part, 1part에 10승개 entry, 즉 256M 개 entry
 #define MAX_HOP 32
 #define PBA_INVALID 0xffffffffff
-#define NR_CACHED_PART (AVAIL_MEMORY/PAGESIZE)
+#define NR_CACHED_PART (AVAIL_MEMORY/PAGESIZE) // 512 MB memory
 //#define NR_CACHED_PART NR_PART
 #define FLASH_READ_MAX 10
 #define NR_ENTRY_PER_PART (PAGESIZE/HASH_ENTRY_BYTES)
@@ -53,6 +61,9 @@ struct hash_entry {
 	uint64_t key_fp_tag:8;
 	uint64_t kv_size:11;
 	uint64_t pba:40;
+#ifdef TTL
+	uint64_t ttl;
+#endif
 };
 
 struct hash_table {
@@ -77,6 +88,7 @@ struct part_info {
 	uint8_t debug;
 	//uint8_t state;
 	atomic_int state;
+	struct hash_part *part_ptr;
 };
 
 struct hopscotch {
@@ -89,6 +101,8 @@ struct hopscotch {
 	queue *part_q[NR_TABLE];
 	struct handler *hlr;
 
+	int ops_number;
+
 	uint64_t fill_cnt;
 	uint64_t dis_cnt;
 	uint64_t off_cnt[MAX_HOP];
@@ -97,19 +111,28 @@ struct hopscotch {
 	void (*idx_free)(struct hopscotch *);
 	struct hash_entry* (*find_matching_tag)(struct hopscotch *, uint8_t, uint32_t, int*, uint8_t);
 	int (*find_free_entry)(struct hopscotch *, uint8_t, uint32_t, struct request *);
+#ifdef TTL
+	struct hash_entry* (*fill_entry)(struct hopscotch *, uint8_t, uint32_t, uint8_t, uint8_t, uint16_t, uint64_t, uint64_t);
+#else
 	struct hash_entry* (*fill_entry)(struct hopscotch *, uint8_t, uint32_t, uint8_t, uint8_t, uint16_t, uint64_t);
+#endif
 	uint64_t (*get_idx_pba)(struct hopscotch *, uint8_t, uint32_t, uint8_t offset); 
 	void (*print_info)(struct hopscotch *);
 	uint64_t lookup_cost[FLASH_READ_MAX];
+
+	pthread_mutex_t lock;
 };
 
 enum {
-	HOP_STEP_INIT,
+	HOP_STEP_INIT = 0,
 	HOP_STEP_KEY_MATCH,
 	HOP_STEP_KEY_MISMATCH,
 	HOP_STEP_LRU_MISS,
 	HOP_STEP_FLYING,
 	HOP_STEP_FIND_RETRY,
+	HOP_STEP_EXPIRED,
+	HOP_STEP_EXPIRED_CONTINUE,
+	HOP_STEP_EVICTED,
 };
 
 enum {

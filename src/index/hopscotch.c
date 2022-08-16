@@ -2,13 +2,61 @@
 #include "index/hopscotch.h"
 #include "platform/kv_ops.h"
 #include "platform/device.h"
+#include "utility/ttl.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-static void copy_key_to_value(struct key_struct *key, struct val_struct *value) {
+uint64_t debug_pba = 0;
+
+uint64_t ttl_cnt = 0;
+
+static void copy_key_to_value(struct key_struct *key, struct val_struct *value, uint32_t ttl) {
 	memcpy(value->value, &key->len, sizeof(key->len));
 	memcpy(value->value+sizeof(key->len), key->key, key->len);
+	memcpy(value->value+sizeof(key->len)+key->len, &value->len, sizeof(value->len));
+	memcpy(value->value+sizeof(key->len)+key->len+sizeof(value->len), &ttl, sizeof(ttl));
+}
+
+static bool is_expired_entry (struct request *req, struct key_struct *key, struct val_struct *value) {
+#ifndef TTL
+	return false;
+#endif
+	if (req->req_time > ((uint32_t *)(value->value + sizeof(key->len) + key->len + sizeof(value->len)))[0])
+		return true;
+	return false;
+}
+
+static int get_dev_idx_by_ops_number(struct handler *hlr, hopscotch *hs) {
+	return hs->ops_number;
+}
+
+static int get_dev_idx(struct handler *hlr, hopscotch *hs, uint8_t dir, struct hash_entry *entry, int num_dev) {
+	struct hash_table *ht;
+	int idx;
+#ifdef PER_CORE
+	idx = hs->ops_number;
+#else
+	ht = &hs->table[dir];
+	idx = ((int)(entry - ht->entry) % num_dev);
+#endif
+	return idx;
+}
+
+
+
+static int get_entry_part(kv_ops *ops, hopscotch *hs, uint8_t dir, struct hash_entry *entry, int num_dev) {
+	struct hash_table *ht;
+	int ret;
+#ifdef PER_CORE
+	ret = ops->ops_number;
+#else
+	ht = &hs->table[dir];
+	ret = ((int)(entry - ht->entry) % num_dev);
+#endif
+	//printf("PART ENTRY: %p, IDX: %d\n", entry, ret);
+	//return 0;
+	return ret;
 }
 
 static void hopscotch_full_idx_init (struct hopscotch *hs) {
@@ -17,7 +65,7 @@ static void hopscotch_full_idx_init (struct hopscotch *hs) {
 	for (int i = 0; i < NR_TABLE; i++) {
 		// entry
 		hs->table[i].entry = (struct hash_entry *)calloc(NR_ENTRY, sizeof(struct hash_entry));
-		for (int j = 0; j < NR_ENTRY; j++) {
+		for (long long unsigned j = 0; j < NR_ENTRY; j++) {
 			hs->table[i].entry[j].pba = PBA_INVALID;
 		}
 	}
@@ -72,9 +120,12 @@ static int hopscotch_full_find_free_entry(struct hopscotch *hs, uint8_t dir, uin
 		for (int dis_off = entry->neigh_off+1; dis_off < MAX_HOP; dis_off++) {
 			int dis_idx = (ori_idx + dis_off) % NR_ENTRY;
 			struct hash_entry *dis_entry = &ht->entry[dis_idx];
-			printf("make_free_entry - idx: %d, offset: %d, neigh_off: %lu", idx, offset, entry->neigh_off);
 			if (dis_entry->pba == PBA_INVALID) {
+#ifdef TTL
+				hs->fill_entry(hs, dir, ori_idx, dis_off, entry->key_fp_tag, entry->kv_size, entry->pba, entry->ttl);
+#else
 				hs->fill_entry(hs, dir, ori_idx, dis_off, entry->key_fp_tag, entry->kv_size, entry->pba);
+#endif
 				hs->dis_cnt++;
 				return offset;
 			}
@@ -82,16 +133,30 @@ static int hopscotch_full_find_free_entry(struct hopscotch *hs, uint8_t dir, uin
 		--offset;
 	}
 
+	static uint64_t full_cnt = 0;
+	if ((++full_cnt % 100) == 0)
+		printf("FULL %lu\n", full_cnt);
+	return  MAX_HOP-1;
+
 	// error
 	puts("\n@@@ insert error point! @@@\n");
 	return -1;
 }
 
+#ifdef TTL
+static struct hash_entry *hopscotch_full_fill_entry
+(struct hopscotch *hs, uint8_t dir, uint32_t idx, uint8_t offset, uint8_t tag, uint16_t size, uint64_t pba, uint64_t ttl) {
+#else
 static struct hash_entry *hopscotch_full_fill_entry
 (struct hopscotch *hs, uint8_t dir, uint32_t idx, uint8_t offset, uint8_t tag, uint16_t size, uint64_t pba) {
+#endif
 	struct hash_table *ht = &hs->table[dir];
 	struct hash_entry *entry = &ht->entry[(idx+offset)%NR_ENTRY];
+#ifdef TTL
+	*entry = (struct hash_entry){offset, tag, size, (pba & PBA_INVALID), ttl};
+#else
 	*entry = (struct hash_entry){offset, tag, size, (pba & PBA_INVALID)};
+#endif
 	return entry;
 }
 
@@ -99,13 +164,13 @@ void hopscotch_full_print_info (struct hopscotch *hs) {
 	// population
 	uint64_t population = 0;
 	for (int i = 0; i < NR_TABLE; i++) {
-		for (int j = 0; j < NR_ENTRY; j++) {
+		for (unsigned long long j = 0; j < NR_ENTRY; j++) {
 			if (hs->table[i].entry[j].pba != PBA_INVALID) {
 				population++;
 			}
 		}
 	}
-	printf("%.2f%% populated (%lu/%u)\n", 
+	printf("%.2f%% populated (%lu/%llu)\n", 
 			(float)population/(NR_TABLE*NR_ENTRY)*100, population, NR_TABLE*NR_ENTRY);
 
 	// cost
@@ -135,15 +200,16 @@ void hopscotch_part_idx_init (struct hopscotch *hs) {
 	}
 
 	for (int i = 0; i < NR_TABLE; i++) {
-		for (int j = 0; j < NR_PART; j++) {
+		for (unsigned int j = 0; j < NR_PART; j++) {
 			hs->part_info[i][j].state = LRU_INVALID;
 			hs->part_info[i][j].pba = PBA_INVALID;
 			hs->part_info[i][j].cnt = 0;
 			hs->part_info[i][j].debug = 0xff;
 			hs->part_info[i][j].latest = 0xffffffff;
 			hs->part_info[i][j].latest_pba = 0xffffffff;
+			hs->part_info[i][j].part_ptr = NULL;
 			//q_enqueue(aligned_alloc(512, PART_SIZE), hs->part_q[i]);
-			q_enqueue(aligned_alloc(512, PART_SIZE), hs->part_q[i]);
+			q_enqueue(aligned_alloc(MEM_ALIGN_UNIT, PART_SIZE), hs->part_q[i]);
 		}
 	}
 
@@ -248,7 +314,7 @@ void *cb_find_retry(void *arg) {
 #endif
 	hs->part_info[part->dir][part->page_num].state = LRU_DONE;
 
-	//retry_req_to_hlr(req->hlr, req);
+	retry_req_to_hlr(req->hlr, req);
 	return NULL;
 }
 
@@ -414,7 +480,7 @@ static int hopscotch_part_find_free_entry(struct hopscotch *hs, uint8_t dir, uin
 	uint64_t _part_pba = hs->part_info[part->dir][part->page_num].pba;
 	tmp_part->pba = _part_pba;
 	//print_part(part, "MAPPING");
-	int ret_val = req->hlr->read(req->hlr, _part_pba, GRAINS_PER_PART, (char *)tmp_part->entry, cb);
+	int ret_val = req->hlr->read(req->hlr, _part_pba, GRAINS_PER_PART, (char *)tmp_part->entry, cb, ops->ops_number);
 
 
 
@@ -438,9 +504,12 @@ static int hopscotch_part_find_free_entry(struct hopscotch *hs, uint8_t dir, uin
 	fflush(stdout);
 	if (zero_num > 2) abort();
 #endif
+	static uint64_t _full_cnt = 0;
 
 	current_idx = (idx + 2 * (MAX_HOP - 1)) % NR_ENTRY;
 	current_lru_key = get_lru_key(current_idx);
+
+	next_part = (struct hash_part *)lru_find(lru, current_lru_key);
 
 	if (next_part || (current_lru_key == lru_key)) { //displace
 		struct hash_part *ori_part, *target_part;
@@ -468,7 +537,11 @@ static int hopscotch_part_find_free_entry(struct hopscotch *hs, uint8_t dir, uin
 				}
 				target_entry = get_entry_from_part(target_part, target_idx);
 				if (target_entry->pba == PBA_INVALID) {
+#ifdef TTL
+					hs->fill_entry(hs, dir, ori_idx, target_off, ori_entry->key_fp_tag, ori_entry->kv_size, ori_entry->pba, ori_entry->ttl);
+#else
 					hs->fill_entry(hs, dir, ori_idx, target_off, ori_entry->key_fp_tag, ori_entry->kv_size, ori_entry->pba);
+#endif
 					hs->dis_cnt++;
 					hs->part_info[dir][target_lru_key].cnt++;
 					hs->part_info[dir][lru_key].cnt--;
@@ -477,6 +550,11 @@ static int hopscotch_part_find_free_entry(struct hopscotch *hs, uint8_t dir, uin
 			}
 			--offset;
 		}
+
+		if ((++_full_cnt % 100000) == 0)
+			printf("FULL %lu\n", _full_cnt);
+		return  MAX_HOP-1;
+
 		printf("full entry\n");
 		//hs->print_info(hs);
 		fflush(stdout);
@@ -486,8 +564,13 @@ static int hopscotch_part_find_free_entry(struct hopscotch *hs, uint8_t dir, uin
 	return -1;
 }
 
+#ifdef TTL
+static struct hash_entry *hopscotch_part_fill_entry
+(struct hopscotch *hs, uint8_t dir, uint32_t idx, uint8_t offset, uint8_t tag, uint16_t size, uint64_t pba, uint64_t ttl) {
+#else
 static struct hash_entry *hopscotch_part_fill_entry
 (struct hopscotch *hs, uint8_t dir, uint32_t idx, uint8_t offset, uint8_t tag, uint16_t size, uint64_t pba) {
+#endif
 	LRU *lru = hs->part_lru[dir];
 	struct hash_part *part;
 	uint32_t lru_key = get_lru_key((idx+offset)%NR_ENTRY);
@@ -502,7 +585,11 @@ static struct hash_entry *hopscotch_part_fill_entry
 #endif
 
 		struct hash_entry *entry = get_entry_from_part(part, (idx+offset)%NR_ENTRY);
+#ifdef TTL
+		*entry = (struct hash_entry){offset, tag, size, (pba & PBA_INVALID), ttl};
+#else
 		*entry = (struct hash_entry){offset, tag, size, (pba & PBA_INVALID)};
+#endif
 		hs->part_info[dir][part->page_num].latest = ((idx + offset)%NR_ENTRY)%NR_ENTRY_PER_PART;
 		hs->part_info[dir][part->page_num].latest_pba = pba & PBA_INVALID;
 
@@ -542,11 +629,12 @@ static int hopscotch_part_push(struct hopscotch *hs, struct request *req, uint8_
 		free(part->entry);
 		free(part);
 		printf("duplicate caching cnt: %d\n", ++cnt);
-		abort();
-		return -1;
+		//abort();
+		//return -1;
+	} else {
+		part->lnode = lru_push(lru, part);
 	}
 
-	part->lnode = lru_push(lru, part);
 
 #ifdef HOP_DEBUG
 	if ((hs->part_info[dir][part->page_num].state == LRU_FLYING) || (hs->part_info[dir][part->page_num].state == LRU_DIRTY)) {
@@ -559,6 +647,7 @@ static int hopscotch_part_push(struct hopscotch *hs, struct request *req, uint8_
 	else {
 		hs->part_info[dir][part->page_num].state = LRU_CLEAN;
 	}
+	hs->part_info[dir][part->page_num].part_ptr = part;
 
 
 	if (lru->size > NR_CACHED_PART) {
@@ -567,11 +656,17 @@ static int hopscotch_part_push(struct hopscotch *hs, struct request *req, uint8_
 		if (hs->part_info[dir][evict_part->page_num].state == LRU_DIRTY) {
 			struct handler *hlr = req->hlr;
 			//old_pba = evict_part->pba;
-			old_pba = PBA_INVALID;
-			uint64_t part_pba = get_next_pba(hlr, PART_SIZE);
-			//uint64_t part_pba = get_next_idx_pba(hlr, PART_SIZE);
+			old_pba = hs->part_info[dir][evict_part->page_num].pba;
+#ifdef PER_CORE
+			uint64_t part_pba = get_next_idx_pba(hlr, PART_SIZE, get_dev_idx_by_ops_number(hlr, hs));
+			//printf("GET PART[%d]: %lu\n", evict_part->page_num, part_pba);
+#else
+			uint64_t part_pba = get_next_pba(hlr, PART_SIZE, -1, get_dev_idx_by_ops_number(hlr, hs), -1);
+#endif
+
 			hs->part_info[dir][evict_part->page_num].state = LRU_FLYING;
 			hs->part_info[dir][evict_part->page_num].pba = part_pba;
+			hs->part_info[dir][evict_part->page_num].part_ptr = NULL;
 			evict_part->pba = part_pba;
 #ifdef HOP_DEBUG
 			int invalid_num = 0, zero_num = 0;
@@ -604,7 +699,11 @@ static int hopscotch_part_push(struct hopscotch *hs, struct request *req, uint8_
 #endif
 
 			struct callback *cb = make_callback(hlr, cb_free, evict_part);
-			hlr->write(hlr, part_pba, old_pba, GRAINS_PER_PART, (char *)evict_part->entry, cb);
+#ifdef PER_CORE
+			hlr->idx_write(hlr, part_pba, old_pba, GRAINS_PER_PART, (char *)evict_part->entry, cb, evict_part->page_num, get_dev_idx_by_ops_number(hlr, hs));
+#else
+			hlr->write(hlr, part_pba, old_pba, GRAINS_PER_PART, (char *)evict_part->entry, cb, hs->ops_number, get_dev_idx_by_ops_number(hlr, hs), -1);
+#endif
 			//cb_free(evict_part);
 
 			//hlr->idx_write(hlr, part_pba, GRAINS_PER_PART, (char *)evict_part->entry, cb);
@@ -612,6 +711,8 @@ static int hopscotch_part_push(struct hopscotch *hs, struct request *req, uint8_
 		} else {
 			q_enqueue((void*)evict_part->entry, hs->part_q[evict_part->dir]);
 			//free(evict_part->entry);
+			
+			hs->part_info[dir][evict_part->page_num].part_ptr = NULL;
 			free(evict_part);
 			return 0;
 		}
@@ -622,15 +723,15 @@ static int hopscotch_part_push(struct hopscotch *hs, struct request *req, uint8_
 void hopscotch_part_print_info (struct hopscotch *hs) {
 	printf("PART_SIZE: %d\n", PART_SIZE);
 	printf("NR_ENTRY_PER_PART: %d\n", NR_ENTRY_PER_PART);
-	printf("NR_PART: %d\n", NR_PART);
-	printf("NR_ENTRY: %d\n", NR_ENTRY);
+	printf("NR_PART: %llu\n", NR_PART);
+	printf("NR_ENTRY: %llu\n", NR_ENTRY);
 	printf("PBA_INVALID: %ld\n", PBA_INVALID);
 	// population
 	//uint64_t entry_cnt = 0, part_cnt = 0;
 	uint64_t part_cnt = 0;
 
 	for (int i = 0; i < NR_TABLE; i++) {
-		for (int j = 0; j < NR_PART; j++) {
+		for (unsigned int j = 0; j < NR_PART; j++) {
 			//entry_cnt = 0;
 			//fot (int k = 0; k < NR_ENTRY_PER_PART; k++) {
 			//	if (part
@@ -644,13 +745,13 @@ void hopscotch_part_print_info (struct hopscotch *hs) {
 			//}
 		}
 	}
-	printf("[PART] %.2f%% populated (%lu/%u)\n", 
+	printf("[PART] %.2f%% populated (%lu/%llu)\n", 
 			(float)part_cnt/(NR_TABLE*NR_PART)*100, part_cnt, NR_TABLE*NR_PART);
 
-	printf("[ENTRY] %.2f%% populated (%lu/%u)\n", 
+	printf("[ENTRY] %.2f%% populated (%lu/%llu)\n", 
 			(float)hs->fill_cnt/(NR_ENTRY)*100, hs->fill_cnt, NR_ENTRY);
 
-	printf("[ENTRY] %.2f%% displaced (%lu/%u)\n", 
+	printf("[ENTRY] %.2f%% displaced (%lu/%llu)\n", 
 			(float)hs->dis_cnt/(NR_ENTRY)*100, hs->dis_cnt, NR_ENTRY);
 
 #if 0
@@ -707,7 +808,11 @@ int hopscotch_init(struct kv_ops *ops) {
 
 	hs->idx_init(hs);
 
+	pthread_mutex_init(&hs->lock, NULL);
+
 	ops->_private = (void *)hs;
+
+	hs->ops_number = ops->ops_number;
 
 	return 0;
 }
@@ -758,15 +863,35 @@ void *cb_keycmp(void *arg) {
 
 	struct key_struct *key = &req->key;
 	struct val_struct *value = &req->value;
+	int i = 0;
+	static int count = 0;
+
+	/*
+	if (strncmp(req->key.key, "user4893349811421211197187580981", 32) == 0) {
+		for (i = 1; i <= 32; i++) {
+			printf("%c",*(((char *)(value->value)) + i));
+		}
+		printf("\nWOWOWOWOW\n");
+	}
+	*/
+
 
 	static int get_miss = 0;
 
 	switch (req->type) {
 		case REQ_TYPE_GET:
 			if (keycmp_k_v(key, value) == 0) {
-				params->lookup_step = HOP_STEP_KEY_MATCH;
-				req->end_req(req);
-				return NULL;
+				if (is_expired_entry(req, key, value)) {
+					printf("EXPEXPEXP!!!!! %d\n", ++count);
+					params->lookup_step = HOP_STEP_EXPIRED;
+				} else {
+#ifdef BREAKDOWN
+					sw_end(req->sw_bd[5]);
+#endif
+					params->lookup_step = HOP_STEP_KEY_MATCH;
+					req->end_req(req);
+					return NULL;
+				}
 			} else {
 				if (++get_miss % 10240 == 0) {
 					printf("GET key missmatch! : %d\n", get_miss);
@@ -817,7 +942,7 @@ int hopscotch_set(struct kv_ops *ops, struct request *req) {
 
 	hash_t h_key = req->key.hash_low;
 
-	uint32_t idx = h_key & ((1 << IDX_BIT)-1);
+	uint32_t idx = h_key & ((1ULL << IDX_BIT)-1);
 	uint8_t  tag = (uint8_t)(h_key >> IDX_BIT);
 	uint8_t  dir = tag & ((1 << DIR_BIT)-1);
 
@@ -830,9 +955,12 @@ int hopscotch_set(struct kv_ops *ops, struct request *req) {
 
 	uint64_t old_pba;
 
-	//if (strncmp(req->key.key, "user765417060341", 16) == 0) {
-	//	puts("here");
-	//}
+	int ret_read;
+
+	
+#ifdef TABLE_LOCK
+	pthread_mutex_lock(&hs->lock);
+#endif
 
 
 	switch (params->insert_step) {
@@ -842,6 +970,14 @@ int hopscotch_set(struct kv_ops *ops, struct request *req) {
 			break;
 		case HOP_STEP_KEY_MISMATCH:
 			hlr->stat.nr_write_key_mismatch++;
+			offset = params->offset + 1;
+			goto hop_insert_key_mismatch;
+			break;
+		case HOP_STEP_EXPIRED_CONTINUE:
+			offset = params->offset + 1;
+			goto hop_insert_key_mismatch;
+			break;
+		case HOP_STEP_EVICTED:
 			offset = params->offset + 1;
 			goto hop_insert_key_mismatch;
 			break;
@@ -856,7 +992,9 @@ int hopscotch_set(struct kv_ops *ops, struct request *req) {
 			goto hop_lru_cache_miss;
 		case HOP_STEP_FIND_RETRY:
 			params->insert_step = HOP_STEP_INIT;
-			goto hop_insert_key_mismatch;
+			idx = params->idx;
+			offset = params->offset;
+			goto hop_lru_cache_miss;
 			break;
 		default:
 			hlr->stat.nr_write++;
@@ -886,9 +1024,29 @@ hop_insert_key_mismatch:
 	if (entry != NULL) {
 		//printf("SET 1 - idx: %llu, offset: %d\n", idx, offset);
 		// read kv-pair to confirm whether it is correct key or not
-		cb = make_callback(hlr, cb_keycmp, req);
 		params->offset = offset;
-		hlr->read(hlr, entry->pba, entry->kv_size, req->value.value, cb);
+#ifdef TTL
+		if (entry->ttl < get_cur_sec()) {
+			//printf("TTL!!! %lu\n", ++ttl_cnt);
+			entry->pba = PBA_INVALID;
+			params->insert_step = HOP_STEP_EXPIRED_CONTINUE;
+			hlr->stat.nr_write_expired++;
+			retry_req_to_hlr(req->hlr, req);
+			goto exit;
+		}
+#endif
+		cb = make_callback(hlr, cb_keycmp, req);
+		ret_read = hlr->read(hlr, entry->pba, entry->kv_size, req->value.value, cb, get_entry_part(ops, hs, dir, entry, hlr->num_dev), get_dev_idx(hlr, hs, dir, entry, hlr->num_dev));
+		if (ret_read < 0) {
+			entry->pba = PBA_INVALID;
+			params->insert_step = HOP_STEP_EVICTED;
+			hlr->stat.nr_write_evicted++;
+			retry_req_to_hlr(req->hlr, req);
+			goto exit;
+		} else {
+			//req->data_lookups++;
+			//req->data_lookup_bytes += entry->kv_size * GRAIN_UNIT;
+		}
 		goto exit;
 		//goto hop_insert_key_match;
 	} else if (hs->type == HOP_PART) {
@@ -955,7 +1113,9 @@ hop_insert_key_mismatch:
 			}
 #endif
 			cb = make_callback(hlr, cb_lru_retry, req);
-			hs->part_info[dir][part->page_num].debug = hlr->read(hlr, part_pba, GRAINS_PER_PART, (char *)part->entry, cb);
+			hs->part_info[dir][part->page_num].debug = hlr->read(hlr, part_pba, GRAINS_PER_PART, (char *)part->entry, cb, ops->ops_number, get_dev_idx_by_ops_number(hlr, hs));
+			req->meta_lookups++;
+			req->meta_lookup_bytes += PART_SIZE;
 			goto exit;
 		}
 	}
@@ -977,7 +1137,7 @@ hop_find_free_entry:
 				part->entry[i].pba = PBA_INVALID;
 			}
 			hopscotch_part_push(hs, req, dir, part);
-				params->insert_step = HOP_STEP_FIND_RETRY;
+			params->insert_step = HOP_STEP_FIND_RETRY;
 			retry_req_to_hlr(req->hlr,req);
 		} else if ((hs->part_info[dir][idx_page_num].state == LRU_FLYING) || (hs->part_info[dir][idx_page_num].state == LRU_DONE)) {
 			params->insert_step = HOP_STEP_FIND_RETRY;
@@ -992,7 +1152,9 @@ hop_find_free_entry:
 			uint64_t part_pba = hs->part_info[dir][part->page_num].pba;
 			hs->part_info[dir][part->page_num].state = LRU_FLYING;
 			hlr->stat.nr_write_find_miss++;
-			hlr->read(hlr, part_pba, GRAINS_PER_PART, (char *)part->entry, cb);
+			hlr->read(hlr, part_pba, GRAINS_PER_PART, (char *)part->entry, cb, ops->ops_number, get_dev_idx_by_ops_number(hlr, hs));
+			req->meta_lookups++;
+			req->meta_lookup_bytes += PART_SIZE;
 		}
 		goto exit;
 	}
@@ -1005,15 +1167,57 @@ hop_insert_key_match:
 	//struct hash_entry *tmp_entry = &ht->entry[(idx+offset)%NR_ENTRY];
 	old_pba = PBA_INVALID;
 
-	pba = get_next_pba(hlr, req->value.len);
-
-	entry = hs->fill_entry(hs, dir, idx, offset, tag, req->value.len/SOB, pba);
+#ifdef TTL
+	entry = hs->fill_entry(hs, dir, idx, offset, tag, req->value.len/SOB, 0, req->req_time + req->sec);
+#else
+	entry = hs->fill_entry(hs, dir, idx, offset, tag, req->value.len/SOB, 0);
+#endif
+#ifdef TTL_GROUP	
+	pba = get_next_pba(hlr, req->value.len, get_entry_part(ops, hs,dir,entry,hlr->num_dev), get_dev_idx(hlr, hs, dir, entry, hlr->num_dev), -1);
+#else
+	pba = get_next_pba(hlr, req->value.len, get_entry_part(ops, hs,dir,entry,hlr->num_dev), get_dev_idx(hlr, hs, dir, entry, hlr->num_dev));
+#endif
+	entry->pba = pba & PBA_INVALID;
+	//printf("entry->pba = %lu, bytes: %lu\n", entry->pba, pba * GRAIN_UNIT);
 	hs->fill_cnt++;
 	hs->part_info[dir][get_idx_page_num(idx,offset)].cnt++;
 
+	if (strncmp(req->key.key, "user3675356291270936062618792023", 32) == 0) {
+		printf("1 - set number: %d %d %p\n", hlr->num_dev, get_entry_part(ops, hs,dir,entry,hlr->num_dev), hlr);
+		print_hash_entry(entry, "SET-1"); 
+		debug_pba = entry->pba;
+	}
+	/*
+	if (strncmp(req->key.key, "user0398563245372196909158431654", 32) == 0) {
+		printf("!!! set number: %d %d\n", hlr->num_dev, get_entry_part(hs,dir,entry,hlr->num_dev));
+		print_hash_entry(entry, "SET!!!"); 
+	}
+	*/
+
 	cb = make_callback(hlr, req->end_req, req);
-	copy_key_to_value(&req->key, &req->value);
-	hlr->write(hlr, entry->pba, old_pba, entry->kv_size, req->value.value, cb);
+	copy_key_to_value(&req->key, &req->value, req->req_time + req->sec);
+#ifdef TTL_GROUP
+	hlr->write(hlr, entry->pba, old_pba, entry->kv_size, req->value.value, cb, get_entry_part(ops, hs,dir,entry,hlr->num_hlr), get_dev_idx(hlr, hs, dir, entry, hlr->num_hlr), -1);
+#else
+	hlr->write(hlr, entry->pba, old_pba, entry->kv_size, req->value.value, cb, get_entry_part(ops, hs,dir,entry,hlr->num_hlr), get_dev_idx(hlr, hs, dir, entry, hlr->num_hlr));
+#endif
+
+	/*
+	if (pba == debug_pba) {
+		int k;
+
+		printf("2 - set number: %d %d\n", hlr->num_dev, get_entry_part(hs,dir,entry,hlr->num_dev));
+		print_hash_entry(entry, "SET-2"); 
+		for (k = 0; k < 32; k++) {
+			printf("%c",*(((char *)(req->key.key)) + k));
+		}
+		printf("\nNONONO\n");
+
+
+	}
+	*/
+
+
 	//*/
 	/*
 	   entry = hs->fill_entry(hs, dir, idx, offset, tag, req->value.len/SOB, pba);
@@ -1023,6 +1227,9 @@ hop_insert_key_match:
 	*/
 
 exit:
+#ifdef TABLE_LOCK
+	pthread_mutex_unlock(&hs->lock);
+#endif
 	return 0;
 }
 
@@ -1043,27 +1250,33 @@ int hopscotch_get(struct kv_ops *ops, struct request *req) {
 
 	hash_t h_key = req->key.hash_low;
 
-	uint32_t idx = h_key & ((1 << IDX_BIT)-1);
+	uint32_t idx = h_key & ((1ULL << IDX_BIT)-1);
 	uint8_t  tag = (uint8_t)(h_key >> IDX_BIT);
 	uint8_t  dir = tag & ((1 << DIR_BIT)-1);
 
 	uint64_t idx_page_num;
+	volatile bool is_evicted = false;
 
 	//struct hash_table *ht = &hs->table[dir];
 	struct hash_entry *entry = NULL;
 	struct callback *cb = NULL;
 
+	int ret_read;
+
 	if (!req->params) req->params = make_hop_params();
 	struct hop_params *params = (struct hop_params *)req->params;
 
-	if (strncmp(req->key.key, "user765417060341", 16) == 0) {
-		puts("here");
-	}
 
+
+
+#ifdef TABLE_LOCK
+	pthread_mutex_lock(&hs->lock);
+#endif
 
 	switch (params->lookup_step) {
 		case HOP_STEP_KEY_MISMATCH:
 			hlr->stat.nr_read_key_mismatch++;
+		case HOP_STEP_EXPIRED_CONTINUE:
 			offset = params->offset + 1;
 			goto hop_lookup_key_mismatch;
 			break;
@@ -1078,8 +1291,20 @@ int hopscotch_get(struct kv_ops *ops, struct request *req) {
 			goto hop_lookup_key_mismatch;
 			break;
 		case HOP_STEP_INIT:
+#ifdef BREAKDOWN
+			sw_end(req->sw_bd[1]);
+			sw_start(req->sw_bd[2]);
+#endif
 			hlr->stat.nr_read++;
+			goto hop_lookup_key_mismatch;
+			break;
+		case HOP_STEP_EXPIRED:
+			is_evicted = true;
+			offset = params->offset;
+			goto hop_lookup_key_mismatch;
+			break;
 		case HOP_STEP_KEY_MATCH:
+			break;
 		default:
 			goto hop_lookup_key_mismatch;
 			break;
@@ -1105,21 +1330,57 @@ hop_lookup_key_mismatch:
 		//printf("1\n");
 		//entry = &ht->entry[(idx+offset)%NR_ENTRY];
 		//entry = get_entry(hs, dir, idx, offset);
-		cb = make_callback(hlr, cb_keycmp, req);
+		if (is_evicted) {
+			entry->pba = PBA_INVALID;
+			goto not_exist;
+		}
 		params->offset = offset;
-		hlr->read(hlr, entry->pba, entry->kv_size, req->value.value, cb);
+#ifdef TTL
+		if (entry->ttl < get_cur_sec()) {
+			//printf("TTL!!! %lu\n", ++ttl_cnt);
+			entry->pba = PBA_INVALID;
+			params->lookup_step = HOP_STEP_EXPIRED_CONTINUE;
+			hlr->stat.nr_read_expired++;
+			retry_req_to_hlr(req->hlr, req);
+			rc = 0;
+			goto exit;
+		}
+#endif
+		cb = make_callback(hlr, cb_keycmp, req);
+		/*
+		if (strncmp(req->key.key, "user4893349811421211197187580981", 32) == 0) {
+			printf("get number: %d %d\n", hlr->num_hlr, get_entry_part(ops, hs,dir,entry, hlr->num_hlr));
+			print_hash_entry(entry, "GET"); 
+		}
+		*/
+#ifdef BREAKDOWN
+		sw_end(req->sw_bd[2]);
+		sw_start(req->sw_bd[3]);
+#endif
+
+		ret_read = hlr->read(hlr, entry->pba, entry->kv_size, req->value.value, cb, get_entry_part(ops, hs,dir,entry, hlr->num_dev), get_dev_idx(hlr, hs, dir, entry, hlr->num_dev));
+		if (ret_read < 0) {
+			entry->pba = PBA_INVALID;
+			params->lookup_step = HOP_STEP_EVICTED;
+			hlr->stat.nr_read_evicted++;
+			goto not_exist;
+		} else {
+			//req->data_lookups++;
+			//req->data_lookup_bytes += entry->kv_size * GRAIN_UNIT;
+		}
 		goto exit;
 	} else if (hs->type == HOP_PART) {
 		idx_page_num = get_idx_page_num(idx, offset);
 		if (hs->part_info[dir][idx_page_num].state == LRU_INVALID) {
 			//printf("2\n");
-			abort();
+			//abort();
 			hash_part_init(&part, hs, dir, (idx + offset)%NR_ENTRY);
 			for (int i = 0; i < NR_ENTRY_PER_PART; i++) {
 				memset(&part->entry[i], 0, sizeof(struct hash_entry));
 				part->entry[i].pba = PBA_INVALID;
 			}
 			hopscotch_part_push(hs, req, dir, part);
+
 			goto not_exist;
 		} else if ((hs->part_info[dir][idx_page_num].state == LRU_FLYING) || (hs->part_info[dir][idx_page_num].state == LRU_DONE)) {
 			//printf("3\n");
@@ -1138,6 +1399,7 @@ hop_lookup_key_mismatch:
 					part->entry[i].pba = PBA_INVALID;
 				}
 				hopscotch_part_push(hs, req, dir, part);
+
 				goto not_exist;
 			} else if ((hs->part_info[dir][idx_page_num].state == LRU_FLYING) || (hs->part_info[dir][idx_page_num].state == LRU_DONE)) {
 				//printf("5\n");
@@ -1156,7 +1418,9 @@ hop_lookup_key_mismatch:
 			uint64_t part_pba = hs->part_info[dir][part->page_num].pba;
 			part->pba = part_pba;
 			cb = make_callback(hlr, cb_lru_retry, req);
-			hlr->read(hlr, part_pba, GRAINS_PER_PART, (char *)part->entry, cb);
+			hlr->read(hlr, part_pba, GRAINS_PER_PART, (char *)part->entry, cb, ops->ops_number, get_dev_idx_by_ops_number(hlr, hs));
+			req->meta_lookups++;
+			req->meta_lookup_bytes += PART_SIZE;
 			goto exit;
 		}
 	}
@@ -1167,6 +1431,9 @@ not_exist:
 exit:
 	if (rc == 1)
 		hlr->stat.nr_read_miss++;
+#ifdef TABLE_LOCK
+	pthread_mutex_unlock(&hs->lock);
+#endif
 	return rc;
 }
 
@@ -1177,11 +1444,102 @@ int hopscotch_delete(struct kv_ops *ops, struct request *req) {
 
 int hopscotch_need_gc(struct kv_ops *ops, struct handler *hlr) {
 	// this would be implemented if necessary
+	return dev_need_gc(hlr, ops->ops_number);
+}
+
+void *cb_idx_gc (void *arg) {
+	return NULL;
+}
+
+void *cb_data_gc (void *arg) {
+	return NULL;
+}
+
+static int trigger_idx_gc(struct handler* hlr, struct kv_ops *ops, struct gc *gc) {
+
+	struct hopscotch *hs = (struct hopscotch *)ops->_private;
+	struct part_info *part_info;
+	struct hash_table *table = &hs->table[0];
+
+	struct segment *victim_seg = (struct segment *)gc->_private;
+	uint32_t valid_cnt = gc->valid_cnt;
+	uint32_t entry_cnt = victim_seg->entry_cnt;
+	char *seg_buf = (char*)gc->buf;
+
+	uint64_t start_pba = victim_seg->start_addr / GRAIN_UNIT + (SEG_IDX_HEADER_SIZE / GRAIN_UNIT);
+	uint64_t victim_part_pba;
+	uint64_t part_idx;
+	char *ptable_buf;
+	struct callback *cb = NULL;
+	int copy_cnt = 0;
+	
+	for (unsigned int i = gc->current_idx; i < entry_cnt; i++) {
+		part_idx = *((uint64_t *)(seg_buf + i * PART_IDX_SIZE));
+		part_info = &hs->part_info[0][part_idx];
+		victim_part_pba = start_pba + i * GRAINS_PER_PART;
+		//printf("GC PART[%d] part->pba: %lu, victim_part_pba: %lu\n", part_idx, part_info->pba, victim_part_pba);
+		if (part_info->pba == victim_part_pba) { // valid part
+			if (part_info->state == LRU_FLYING) {
+				gc->current_idx = i;
+				gc->state = GC_FLYING;
+				printf("GC FLYING!!!\n");
+				return -1;
+			}
+			copy_cnt++;
+			ptable_buf = seg_buf + SEG_IDX_HEADER_SIZE + i * GRAINS_PER_PART;
+#ifdef TTL
+			//TODO: discard TTL entries!!!!
+			//if (int j = 0; j < 
+#endif
+			memcpy(ptable_buf, &table->entry[part_idx * NR_ENTRY_PER_PART], PART_SIZE);
+
+			cb = make_callback(hlr, cb_idx_gc, gc);
+
+			//printf("valid_cnt: %d, part_idx: %lu part_pba: %lu\n", copy_cnt, part_idx, victim_part_pba);
+			part_info->pba = get_next_idx_pba(hlr, PART_SIZE, ops->ops_number);
+			if (part_info->part_ptr != NULL)
+				part_info->part_ptr->pba = part_info->pba;
+			hlr->idx_write(hlr, part_info->pba, victim_part_pba, GRAINS_PER_PART, ptable_buf, cb, part_idx, ops->ops_number);
+
+			//part->pba = get_next_pba(hlr, PART_TABLE_SIZE);
+			//hlr->write(hlr, part->pba, victim_part_pba, PART_TABLE_GRAINS, ptable_buf, cb);
+		}
+	}
+
+	if (victim_seg->invalid_cnt != entry_cnt) {
+		abort();
+	}
+
+	gc->state = GC_DONE;
+
+	return 0;
+}
+
+static int trigger_data_gc(struct handler* hlr, struct kv_ops *ops, struct gc *gc) {
 	return 0;
 }
 
 int hopscotch_trigger_gc(struct kv_ops *ops, struct handler *hlr) {
-	// this would be implemented if necessary
+	struct gc *gc = hlr->gc;
+
+	if (!dev_read_victim_segment(hlr, ops->ops_number, gc)) {
+		goto exit;
+	}
+
+	if (gc->is_idx) {
+		if (trigger_idx_gc(hlr, ops, gc) < 0)
+			return gc->valid_cnt;
+	} else {
+		trigger_data_gc(hlr, ops, gc);
+	}
+
+
+exit:
+	reap_gc_segment(hlr, ops->ops_number, gc);
+	gc->state = GC_DONE;
+
+	return gc->valid_cnt;
+
 	return 0;
 }
 

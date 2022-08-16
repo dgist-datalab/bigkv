@@ -29,6 +29,7 @@ typedef struct queue{
 	volatile int size;
 	int m_size;
 	pthread_mutex_t q_lock;
+	pthread_rwlock_t rw_lock;
 	bool firstFlag;
 	node *head;
 	node *tail;

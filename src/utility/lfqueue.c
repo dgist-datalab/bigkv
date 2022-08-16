@@ -3,9 +3,9 @@
 #include <stdlib.h>
 #include "utility/lfqueue.h"
 
-void lfq_init(struct queue** q, int size){
-	(*q)=(queue*)malloc(sizeof(queue));
-	(*q)->head=(node*)malloc(sizeof(node));
+void lfq_init(struct lfqueue** q, int size){
+	(*q)=(lfqueue*)malloc(sizeof(lfqueue));
+	(*q)->head=(lfq_node*)malloc(sizeof(lfq_node));
 	(*q)->tail=(*q)->head;
 	(*q)->head->n=NULL;
 	(*q)->head->next=NULL;
@@ -14,9 +14,9 @@ void lfq_init(struct queue** q, int size){
 	(*q)->m_size=size;
 }
 
-int lfq_enqueue(void *val,struct queue* q){
-	struct node *n;
-	struct node *_node=(node*)malloc(sizeof(node));
+int lfq_enqueue(void *val,struct lfqueue* q){
+	struct lfq_node *n;
+	struct lfq_node *_node=(lfq_node*)malloc(sizeof(lfq_node));
 	_node->n=val;
 	_node->next=NULL;
 	
@@ -37,8 +37,8 @@ int lfq_enqueue(void *val,struct queue* q){
 	return 1;
 }
 
-void *lfq_dequeue(struct queue *q){
-	struct node* n;
+void *lfq_dequeue(struct lfqueue *q){
+	struct lfq_node* n;
 	void *val;
 	while(1){
 		n=q->head;
@@ -56,7 +56,7 @@ void *lfq_dequeue(struct queue *q){
 	return val;
 }
 
-void lfq_free(struct queue *q){
+void lfq_free(struct lfqueue *q){
 	while(lfq_dequeue(q)){}
 	free(q);
 }

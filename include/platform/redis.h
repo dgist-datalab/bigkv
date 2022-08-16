@@ -11,5 +11,6 @@ error redis_err_unknown_command(struct client *cli, const char *name, int count)
 req_type_t redis_convert_type(struct client *cli);
 void redis_write_ok(int sock);
 void redis_write_empty_array(int sock);
+void redis_write_multibulk(int sock, int n);
 
 #endif

@@ -35,6 +35,8 @@ struct kv_ops {
 	int (*wait_gc) (struct kv_ops *, struct handler *hlr);
 
 	void *_private;
+	void *hlr;
+	int ops_number;
 	struct kv_ops_stat stat;
 };
 

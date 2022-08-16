@@ -43,4 +43,10 @@ struct netack {
 	time_t elapsed_time;
 };
 
+struct trace {
+	int cluster_num;
+	int num_files;
+};
+
+
 #endif

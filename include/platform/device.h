@@ -18,19 +18,28 @@
 #include "platform/handler.h"
 #include "utility/queue.h"
 #include "utility/list.h"
+#include "platform/dev_spdk.h"
+#include <liburing.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <libaio.h>
 
 #define FLYING_QSIZE 1024
 #define GC_VICTIM_THRESHOLD 0.1
-#define GC_TRIGGER_THRESHOLD 2 // number of free segments remained
+#define GC_TRIGGER_THRESHOLD 10 // number of free segments remained
+#define GC_DISCARD_THRESHOLD 2
 #define DEV_OP_RATE 0.1
-#define SEG_MAX_AGE 32
 
 
 #define PART_IDX_SIZE 8
+#ifdef BIGKV
 #define SEG_IDX_HEADER_SIZE 4096 // SEGMENT_SIZE/PART_TABLE_SIZE * PART_IDX_SIZE
+#elif HOPSCOTCH
+#define SEG_IDX_HEADER_SIZE 4096 // SEGMENT_SIZE/PART_TABLE_SIZE * PART_IDX_SIZE
+#else
+#define SEG_IDX_HEADER_SIZE 0 // SEGMENT_SIZE/PART_TABLE_SIZE * PART_IDX_SIZE
+#endif
 
 #define	SEG_STATE_IDX 1
 #define	SEG_STATE_DATA 2
@@ -39,6 +48,10 @@
 #define	SEG_STATE_STAGED 16
 #define	SEG_STATE_FLYING 32
 
+#define NR_TTL_GROUPS 32
+
+//#define RAM_SIZE (16ULL * Gi)
+#define RAM_SIZE (128ULL * Gi)
 
 /* Each device is divided into fixed-size segments */
 struct segment {
@@ -50,19 +63,30 @@ struct segment {
 	void *buf;
 	void *_private;
 	li_node *lnode;
+	li_node *ttl_lnode;
 	uint32_t entry_cnt;
 	uint32_t invalid_cnt;
 	uint64_t age;
 	uint8_t *seg_bitmap;
+	uint64_t creation_time;
+	uint32_t ttl;
 };
 
 /* Device abstraction */
 struct dev_abs {
 	char dev_name[128];
 	int dev_fd;
+	int dev_number;
 
-	uint32_t nr_logical_block;
-	uint32_t logical_block_size;
+	struct io_uring ring;
+	io_context_t aio_ctx;
+
+	struct spdk_ctx *sctx;
+
+	char **ram_disk;
+
+	uint64_t nr_logical_block;
+	uint64_t logical_block_size;
 	uint64_t size_in_byte;
 
 	uint64_t segment_size;
@@ -76,10 +100,17 @@ struct dev_abs {
 	queue *free_seg_q;
 	list *flying_seg_list;
 	list *committed_seg_list;
+	list *dummy_committed_seg_list;
+
+	struct segment *staged_segs[NR_TTL_GROUPS];
+	list *ttl_fifo[NR_TTL_GROUPS];
+
 
 
 	pthread_mutex_t flying_seg_lock;
 	pthread_mutex_t committed_seg_lock;
+
+	pthread_mutex_t dev_lock;
 
 	struct segment *staged_seg;
 	struct segment *staged_idx_seg;
@@ -107,21 +138,33 @@ struct dev_abs {
 	uint64_t victim_trim_data_seg_cnt;
 };
 
-struct dev_abs *dev_abs_init(const char dev_name[]);
+struct dev_abs *dev_abs_init(struct handler *hlr, const char dev_name[], int core_mask, int dev_number);
 int dev_abs_free(struct dev_abs *dev);
 
-int dev_abs_read(struct handler *hlr, uint64_t pba, uint32_t size, char *buf, struct callback *cb);
-int dev_abs_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t size, char *buf, struct callback *cb);
-int dev_abs_idx_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t size, char *buf, struct callback *cb, uint64_t part_idx);
+int dev_abs_read(struct handler *hlr, uint64_t pba, uint32_t size, char *buf, struct callback *cb, int hlr_idx, int dev_idx);
+int dev_abs_poller_read(struct handler *hlr, uint64_t pba, uint32_t size, char *buf, struct callback *cb, int dev_idx);
+int dev_abs_sync_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain, char *buf, int dev_idx);
+int dev_abs_idx_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t size, char *buf, struct callback *cb, uint64_t part_idx, int dev_idx);
+int dev_abs_idx_overwrite(struct handler *hlr, uint64_t pba, uint32_t size_in_grain, char *buf, struct callback *cb, int dev_idx);
+int dev_abs_sync_write(struct handler *hlr, uint64_t pba, uint32_t size_in_byte, char *buf, int dev_idx);
 
 void *alloc_seg_buffer(uint32_t size);
-bool dev_need_gc(struct handler *hlr);
-int dev_read_victim_segment(struct handler *hlr, struct gc *gc);
-bool is_idx_seg(struct handler *hlr);
-void reap_gc_segment(struct handler *hlr, struct gc *gc);
+bool dev_need_gc(struct handler *hlr, int dev_idx);
+int dev_read_victim_segment(struct handler *hlr, int dev_idx, struct gc *gc);
+bool is_idx_seg(struct gc *gc);
+void reap_gc_segment(struct handler *hlr, int dev_idx, struct gc *gc);
 
-uint64_t get_next_pba(struct handler *hlr, uint32_t size);
-uint64_t get_next_idx_pba(struct handler *hlr, uint32_t size);
+uint64_t get_next_pba_dummy(struct handler *hlr, uint32_t size, int dev_idx);
+uint64_t get_next_idx_pba(struct handler *hlr, uint32_t size, int dev_idx);
+bool do_expiration(struct handler *hlr, int dev_idx);
+
+#ifdef TTL_GROUP
+uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_idx, uint32_t ttl);
+int dev_abs_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t size, char *buf, struct callback *cb, int hlr_idx, int dev_idx, uint32_t ttl);
+#else
+uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_idx);
+int dev_abs_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t size, char *buf, struct callback *cb, int hlr_idx, int dev_idx);
+#endif
 
 static void print_segment (struct segment *seg, const char *str) {
 	printf("PRINT SEGMENT [%s] idx: %d, state: %d, start_addr: %lu, end_addr: %lu, offset: %lu, entry_cnt: %u, invalid_cnt: %u, age: %lu\n", str, seg->idx, seg->state, seg->start_addr, seg->end_addr, seg->offset, seg->entry_cnt, seg->invalid_cnt, seg->age);
@@ -132,7 +175,7 @@ static void print_segment_by_addr (struct dev_abs *dev, uint64_t addr, const cha
 	printf("PRINT SEGMENT BY ADDR addr: %lu, idx: %lu [%s] idx: %d, state: %d, start_addr: %lu, end_addr: %lu, offset: %lu, entry_cnt: %u, invalid_cnt: %u, age: %lu\n", addr, addr/dev->segment_size, str, seg->idx, seg->state, seg->start_addr, seg->end_addr, seg->offset, seg->entry_cnt, seg->invalid_cnt, seg->age);
 }
 
-void dev_print_gc_info(struct handler *hlr);
+void dev_print_gc_info(struct handler *hlr, struct dev_abs *dev);
 
 
 #endif
