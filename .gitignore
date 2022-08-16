@@ -2,4 +2,6 @@ bin/
 obj/
 lib/
 result/
+script/YCSB
+script/simulation
 *.swp
