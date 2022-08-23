@@ -3,7 +3,6 @@ OBJ_DIR = ./obj
 LIB_DIR = ./lib
 BIN_DIR = ./bin
 INC_DIR = ./include \
-		  -I ./../liburing/src/include \
 #		  -I ./../spdk/include \
 
 CC = g++
@@ -21,6 +20,7 @@ LIBS += \
 	-lpthread \
 	-laio \
 	-lnuma \
+	-luring \
 #	-L./../liburing/src -luring \
 	-lspdk \
 	-lspdk_env_dpdk \
