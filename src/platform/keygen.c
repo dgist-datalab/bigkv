@@ -94,7 +94,6 @@ void set_eff_kg (struct keygen *kg, int32_t eff_ratio, int32_t insert_ratio) {
 	kg->start_hotset = kg->nr_coldset;
 	kg->start_coldset = 0;
 	kg->start_insertset = kg->nr_eff_key;
-	printf("nr_hotset = %lu, nr_coldset = %lu nr_insertset = %lu\n", kg->nr_hotset, kg->nr_coldset, kg->nr_insertset);
 }
 
 void move_hotset_area (struct keygen *kg, int32_t move_ratio) {
@@ -109,8 +108,6 @@ void move_hotset_area (struct keygen *kg, int32_t move_ratio) {
 		kg->start_coldset += nr_move_key;
 		kg->start_insertset += nr_move_key;
 	}
-	printf("start_hotset = %lu, start_coldset = %lu start_insertset = %lu\n", kg->start_hotset, kg->start_coldset, kg->start_insertset);
-	printf("nr_hotset = %lu, nr_coldset = %lu nr_insertset = %lu\n", kg->nr_hotset, kg->nr_coldset, kg->nr_insertset);
 }
 
 kg_key_t get_next_key_for_load(struct keygen *kg) {

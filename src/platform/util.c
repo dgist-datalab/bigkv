@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <stdio.h>
 
-//#define SEND_ACK_BUFFERING
 #define ACK_BUF_MAX 64
 
 uint64_t hashing_key(char *key, uint8_t len) {
@@ -62,12 +61,7 @@ ssize_t read_sock_bulk_circular(int sock, void *buf, ssize_t buf_size, ssize_t b
 	ssize_t buf_end = buf_start + buf_len;
 	ssize_t len;
 	len = read(sock, &(((char *)buf)[buf_end]), buf_size - buf_end);
-	//printf("len: %d\n", len);
 	if (len == -1) {
-		//perror("-1\n");
-		//len = read(sock, &(((char *)buf)[buf_end]), buf_size - buf_end);
-		//perror("-1\n");
-		//abort();
 		if (buf_len == 0) {
 			return -1;
 		} else {

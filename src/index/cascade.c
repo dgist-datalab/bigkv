@@ -583,9 +583,9 @@ static struct t2_hash_block *write_t2_block(struct cascade *cas, struct handler 
 	/*
 	printf("%p part size: %d, ori_head: %d, new_head: %d, t2_block_pba: %d\n", t1_part, t1_part->t2_fifo_size, ori_head, t1_part->t2_fifo_head, t2_block_pba);
 	if (t2_block_pba == 4224) {
-		printf("[FUCK]%lu\n",t2_block->entry[214].fingerprint);
-		printf("[FUCK]%lu\n",t2_block->entry[1023].fingerprint);
-		printf("[FUCK]%d %d %p %p\n", sizeof(t2_block->entry), sizeof(struct t2_hash_block), t2_block, t2_block->entry);
+		printf("[ERR]%lu\n",t2_block->entry[214].fingerprint);
+		printf("[ERR]%lu\n",t2_block->entry[1023].fingerprint);
+		printf("[ERR]%d %d %p %p\n", sizeof(t2_block->entry), sizeof(struct t2_hash_block), t2_block, t2_block->entry);
 	}
 	*/
 	//cb = make_callback(hlr, cb_t2_write, t2_block);
@@ -611,9 +611,9 @@ static struct t2_hash_block *write_t2_block(struct cascade *cas, struct handler 
 	/*
 	if (t2_block_pba == 4224) {
 		memset(t2_block, 0, T2_BLOCK_SIZE);
-		printf("[FUCK]%lu\n",t2_block->entry[214].fingerprint);
-		printf("[FUCK]%lu\n",t2_block->entry[1023].fingerprint);
-		printf("[FUCK]%d %d %p %p\n", sizeof(t2_block->entry), sizeof(struct t2_hash_block), t2_block, t2_block->entry);
+		printf("[ERR]%lu\n",t2_block->entry[214].fingerprint);
+		printf("[ERR]%lu\n",t2_block->entry[1023].fingerprint);
+		printf("[ERR]%d %d %p %p\n", sizeof(t2_block->entry), sizeof(struct t2_hash_block), t2_block, t2_block->entry);
 
 		hlr->sync_read(hlr, 4224, T2_BLOCK_GRAINS, (char *)t2_block);
 	printf("[YOU]%lu\n",t2_block->entry[214].fingerprint);
@@ -1126,7 +1126,7 @@ static struct t3_hash_block *write_t3_buffer(struct cascade *cas, struct handler
 		t3_bucket = &t3_narrow->t3_bucket[t3_narrow_bucket_idx];
 		buf = t3_bucket->buf;
 		if (t3_bucket->buf_idx >= T3_BLOCK_ENTRY)
-			printf("FUCK???\n");
+			printf("ERR???\n");
 
 		//if (entry_f->fingerprint == 9326686948173054547) {
 		//	printf("t3_bucket: %p, narrow_idx: %d, wide_idx: %d, idx: %d\n", t3_bucket, t3_narrow_bucket_idx, t3_wide_bucket_idx, t3_bucket->buf_idx);

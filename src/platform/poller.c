@@ -9,7 +9,6 @@
 #include <libaio.h>
 #endif
 
-//#define NR_EVENTS QDEPTH*2
 #define NR_EVENTS QDEPTH*4
 
 extern bool stopflag_hlr;
@@ -51,7 +50,6 @@ static void *aio_poller(void *input) {
 					} else if (ev->res != iocb->u.c.nbytes) {
 						fprintf(stderr, "aio: Data size error %lu!=%lu\n", ev->res, iocb->u.c.nbytes);
 						printf("%s\n",strerror(-ev->res));
-						perror("sss\n");
 						abort();
 					}
 #ifdef BREAKDOWN
@@ -63,11 +61,8 @@ static void *aio_poller(void *input) {
 						}
 					}
 #endif
-
-					//q_enqueue((void *)cb, hlr->done_q);
 					cb->func(cb->arg);
 					q_enqueue((void *)cb, cb->hlr->cb_pool);
-					//free(ev->data);
 					q_enqueue((void *)iocb, cb->hlr->iocb_pool);
 				}
 			}	
@@ -112,14 +107,12 @@ static void *uring_poller(void *input) {
 				} else if (ret < 0) {
 					fprintf(stderr, "uring: I/O failed\n");
 					printf("%s\n",strerror(-ret));
-					perror("sss1\n");
 					abort();
 				}
 			}
 	
 			if (ret < 0 || cqe == NULL) {
 				printf("%s\n",strerror(-ret));
-				perror("sss0\n");
 				abort();
 			}
 			
@@ -134,13 +127,10 @@ static void *uring_poller(void *input) {
 				}
 				else {
 					printf("%s\n",strerror(-cqe->res));
-					perror("sss2\n");
 					abort();
 				}
 			} else if (cqe->res != io_data->iovec.iov_len) {
 				io_uring_cqe_seen(&dev->ring, cqe);
-				//io_data->iovec.iov_base = (char *)(io_data->iovec.iov_base) + cqe->res;
-				//io_data->iovec.iov_len -= cqe->res;
 				uring_retry(dev, &dev->ring, io_data);
 				continue;
 			}
@@ -218,7 +208,6 @@ static void *aio_polling(void *input) {
 					} else if (ev->res != iocb->u.c.nbytes) {
 						fprintf(stderr, "aio: Data size error %lu!=%lu\n", ev->res, iocb->u.c.nbytes);
 						printf("%s\n",strerror(-ev->res));
-						perror("sss\n");
 						abort();
 					}
 #ifdef BREAKDOWN
@@ -231,10 +220,8 @@ static void *aio_polling(void *input) {
 					}
 #endif
 	
-					//q_enqueue((void *)cb, hlr->done_q);
 					cb->func(cb->arg);
 					q_enqueue((void *)cb, cb->hlr->cb_pool);
-					//free(ev->data);
 					q_enqueue((void *)iocb, cb->hlr->iocb_pool);
 				}
 				found = true;
@@ -251,8 +238,7 @@ static void *aio_polling(void *input) {
 static void
 perf_disconnect_cb(struct spdk_nvme_qpair *qpair, void *ctx)
 {
-	printf("??????????????????\n");
-
+	return;
 }
 
 static int64_t
@@ -338,14 +324,12 @@ static void *uring_polling(void *input) {
 				} else if (ret < 0) {
 					fprintf(stderr, "uring: I/O failed\n");
 					printf("%s\n",strerror(-ret));
-					perror("sss1\n");
 					abort();
 				}
 			}
 	
 			if (ret < 0 || cqe == NULL) {
 				printf("%s\n",strerror(-ret));
-				perror("sss0\n");
 				abort();
 			}
 			
@@ -361,13 +345,10 @@ static void *uring_polling(void *input) {
 				}
 				else {
 					printf("%s\n",strerror(-cqe->res));
-					perror("sss2\n");
 					abort();
 				}
 			} else if (cqe->res != io_data->iovec.iov_len) {
 				io_uring_cqe_seen(&dev->ring, cqe);
-				//io_data->iovec.iov_base = (char *)(io_data->iovec.iov_base) + cqe->res;
-				//io_data->iovec.iov_len -= cqe->res;
 				uring_retry(dev, &dev->ring, io_data);
 				dev_idx--;
 				continue;

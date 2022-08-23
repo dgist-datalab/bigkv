@@ -24,16 +24,6 @@ int set_value(struct val_struct *value, int len, char *input_val, int is_read, s
 	value->len = len;
 	if (!value->value) {
 		if (is_read) {
-			/*
-#ifdef USE_HUGEPAGE
-			//value->value = (char *)aligned_alloc(VALUE_ALIGN_UNIT, value->len);
-			//value->value = (char*)mmap(NULL, len, PROT_READ | PROT_WRITE,
-            //     MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, 0, 0);
-			value->value = (char *)q_dequeue(hlr->value_pool);
-#else
-			value->value = (char *)aligned_alloc(VALUE_ALIGN_UNIT, value->len);
-#endif
-*/
 			value->value = (char *)q_dequeue(hlr->value_pool);
 		} else {
 #ifdef DEV_SPDK
@@ -96,17 +86,8 @@ make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_t
 	req->key.hash_high = hash128.first;
 	req->key.hash_low = hash128.second;
 
-
-	// args[3]: value
-	//printf("%d\n", type);
-	//if (type == 3) {
-	//	printf("%s\n", cli->args[1]);
-	//}
-	//printf("%d\n", cli->args_size[3]);
-
 	switch (req->type) {
 	case REQ_TYPE_GET:
-		//set_value(&req->value, VALUE_LEN_MAX, NULL);
 		break;
 	case REQ_TYPE_SET:
 #ifndef TTL
@@ -117,7 +98,6 @@ make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_t
 #endif
 #endif
 		req->value.len = cli->args_size[3];
-		//set_value(&req->value, req->value.len, (char*)cli->args[3], 0, hlr);
 		break;
 	case REQ_TYPE_DELETE:
 	case REQ_TYPE_RANGE:
@@ -136,7 +116,6 @@ make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_t
 	req->params = NULL;
 	req->temp_buf = NULL;
 
-
 	//sw_start(&req->sw);
 
 	return req;
@@ -144,7 +123,6 @@ make_request_from_redis(struct handler *hlr, struct client *cli, int sock, req_t
 
 struct request *
 make_request_from_netreq(struct handler *hlr, struct netreq *nr, int sock) {
-	//struct request *req = (struct request *)malloc(sizeof (struct request));
 	struct request *req;
 	while ((req = (struct request *)q_dequeue(hlr->req_pool)) == NULL);
 	memset(req, 0, sizeof(*req));
@@ -219,7 +197,6 @@ add_request_info(struct request *req) {
 void *net_end_req(void *_req) {
 	struct request *req = (struct request *)_req;
 	struct handler *hlr = req->hlr;
-	//struct netack *ack = (struct netack *)malloc(sizeof(struct netack));
 	struct netack ack;
 	time_t elapsed_time;
 
@@ -229,9 +206,6 @@ void *net_end_req(void *_req) {
 	ack.elapsed_time = sw_get_usec(&req->sw);
 
 	elapsed_time = sw_get_usec(&req->sw);
-	//ack.seq_num = req->seq_num; // TODO
-	//ack.type = req->type;
-	//ack.elapsed_time = sw_get_usec(&req->sw);
 	
 	switch (req->type) {
 	case REQ_TYPE_GET:
@@ -254,27 +228,8 @@ void *net_end_req(void *_req) {
 	}
 
 	send_ack(req->cl_sock, &ack);
-	//q_enqueue((void *)ack, ack_q);
 
 	cl_release(hlr->flying);
-
-#if 0
-	static uint64_t req_ret[20] = {0,};
-
-	static uint64_t total_cnt = 0;
-	if (req->type == REQ_TYPE_GET) {
-		total_cnt++;
-		req_ret[((struct cas_params *)req->params)->read_step]++;
-		if ((total_cnt % 10000) == 0) {
-			printf("req ret\n");
-			for(int i = 0; i< 20; i++) {
-				printf("%ld ",req_ret[i]);
-			}
-			printf("\n");
-		}
-		fflush(stdout);
-	}
-#endif
 
 #ifdef BREAKDOWN
 	if (req->type == REQ_TYPE_GET) {
@@ -290,21 +245,6 @@ void *net_end_req(void *_req) {
 	//sw_start(sw_free);
 	if (req->params) free(req->params);
 	if (req->type == REQ_TYPE_GET) {
-		/*
-#ifdef USE_HUGEPAGE
-		//printf("munmap\n");
-		//free(req->value.value);
-		//if (munmap(req->value.value, req->value.len) < 0) {
-		//	printf("value.value=%p, value.len=%d\n", req->value.value, req->value.len);
-		//	perror("unmap");
-		//	fflush(stdout);
-		//	abort();
-		//}
-		q_enqueue((void *)req->value.value, hlr->value_pool);
-#else
-		free(req->value.value);
-#endif
-		*/
 		q_enqueue((void *)req->value.value, hlr->value_pool);
 	} else {
 #ifdef DEV_SPDK
@@ -315,7 +255,6 @@ void *net_end_req(void *_req) {
 	}
 	q_enqueue((void *)req, hlr->req_pool);
 	//sw_end(sw_free);
-	//t_free += sw_get_usec(sw_free);
 
 	return NULL;
 }
@@ -323,15 +262,11 @@ void *net_end_req(void *_req) {
 void *redis_end_req(void *_req) {
 	struct request *req = (struct request *)_req;
 	struct handler *hlr = req->hlr;
-	//struct netack *ack = (struct netack *)malloc(sizeof(struct netack));
 	time_t elapsed_time;
 
 	static int move_cnt = 0;
 	sw_end(&req->sw);
 	elapsed_time = sw_get_usec(&req->sw);
-	//ack.seq_num = req->seq_num; // TODO
-	//ack.type = req->type;
-	//ack.elapsed_time = sw_get_usec(&req->sw);
 	
 	switch (req->type) {
 	case REQ_TYPE_GET:
@@ -346,7 +281,6 @@ void *redis_end_req(void *_req) {
 		redis_write_empty_array(req->cl_sock);
 		if (req->rc == 1) {
 			//NOT found!!
-			//redis_write_multibulk(req->cl_sock, 1);
 		} else {
 			if (repaired && !re_activated) {
 				if ((req->hlr->number != FAULT_HLR) && req->fault && req->repaired) {
@@ -360,7 +294,6 @@ void *redis_end_req(void *_req) {
 				}
 			}
 			//found!!
-			//redis_write_ok(req->cl_sock);
 		}
 		break;
 	case REQ_TYPE_SET:
@@ -374,30 +307,7 @@ void *redis_end_req(void *_req) {
 		break;
 	}
 
-
-	//send_ack(req->cl_sock, &ack);
-	//q_enqueue((void *)ack, ack_q);
-
 	cl_release(hlr->flying);
-
-#if 0 
-	static uint64_t req_ret[20] = {0,};
-
-	static uint64_t total_cnt = 0;
-	if (req->type == REQ_TYPE_GET) {
-		total_cnt++;
-		req_ret[((struct cas_params *)req->params)->read_step]++;
-		if ((total_cnt % 10000) == 0) {
-			printf("req ret\n");
-			for(int i = 0; i< 20; i++) {
-				printf("%ld ",req_ret[i]);
-			}
-			printf("\n");
-		}
-		fflush(stdout);
-	}
-#endif
-
 
 	//sw_start(sw_free);
 	if (req->params) free(req->params);
@@ -420,7 +330,6 @@ void *redis_end_req(void *_req) {
 void *trace_end_req(void *_req) {
 	struct request *req = (struct request *)_req;
 	struct handler *hlr = req->hlr;
-	//struct netack *ack = (struct netack *)malloc(sizeof(struct netack));
 	time_t elapsed_time;
 
 	sw_end(&req->sw);
@@ -436,10 +345,8 @@ void *trace_end_req(void *_req) {
 		collect_io_count(hlr->amf_cdf_table, req->meta_lookups);
 #endif
 		hlr->nr_query++;
-		//redis_write_empty_array(req->cl_sock);
 		break;
 	case REQ_TYPE_SET:
-		//redis_write_ok(req->cl_sock);
 		break;
 	case REQ_TYPE_DELETE:
 	case REQ_TYPE_RANGE:
@@ -450,24 +357,6 @@ void *trace_end_req(void *_req) {
 
 
 	cl_release(hlr->flying);
-
-#if 0
-	static uint64_t req_ret[20] = {0,};
-
-	static uint64_t total_cnt = 0;
-	if (req->type == REQ_TYPE_GET) {
-		total_cnt++;
-		req_ret[((struct cas_params *)req->params)->read_step]++;
-		if ((total_cnt % 10000) == 0) {
-			printf("req ret\n");
-			for(int i = 0; i< 20; i++) {
-				printf("%ld ",req_ret[i]);
-			}
-			printf("\n");
-		}
-		fflush(stdout);
-	}
-#endif
 
 	//sw_start(sw_free);
 	if (req->params) {
@@ -484,8 +373,6 @@ void *trace_end_req(void *_req) {
 #endif
 	}
 	q_enqueue((void *)req, hlr->req_pool);
-	//sw_end(sw_free);
-	//t_free += sw_get_usec(sw_free);
 
 	return NULL;
 }

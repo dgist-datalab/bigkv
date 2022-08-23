@@ -31,7 +31,6 @@ stopwatch *print_sw;
 
 static int __socket_init() {
 	int fd;
-	//int flags;
 	int option;
 	struct sockaddr_in sockaddr;
 
@@ -40,16 +39,6 @@ static int __socket_init() {
 		perror("socket()");
 		goto error;
 	}
-
-	// setting socket to non-blocking
-	/*
-	flags = fcntl(fd, F_GETFL);
-	flags |= O_NONBLOCK;
-	if (fcntl(fd, F_SETFL, flags) < 0) {
-		perror("fcntl()");
-		goto close_fd;
-	}
-	*/
 
 	// setting socket to enable reusing address and port
 	option = true;
@@ -90,18 +79,11 @@ static int master_sock_init (struct master *mas) {
 		perror("epoll_create1()");
 		return -1;
 	}
-	/*
-	mas->buf = (char *)malloc(MASTER_BUF_SIZE);
-	mas->buf_start = mas->buf_len = 0;
-	mas->buf_size = MASTER_BUF_SIZE;
-	mas->args_cap = mas->args_len = 0;
-	*/
 	for (int i = 0; i < CLIENT_MAX_NUM; i++) {
 		mas->clients[i] = NULL;
 	}
 
 	struct epoll_event events;
-	//events.events  = EPOLLIN | EPOLLET;
 	events.events  = EPOLLIN;
 	events.data.fd = mas->fd;
 
@@ -192,7 +174,6 @@ struct master *master_init(int num_hlr, int num_dev, char *device[], char *core_
 #endif
 
 	for (int i = 0; i < num_hlr; i++) {
-		printf("HANDLER[%d] INIT\n", i);
 		mas->hlr[i] = handler_init(mas, hlrs + i, device + i * num_dev_per_hlr, num_dev, num_dev_per_hlr, num_hlr);
 	}
 
@@ -274,16 +255,6 @@ static int __accept_new_client(struct master *mas) {
 		goto error;
 	}
 
-	/*
-	flags = fcntl(fd, F_GETFL);
-	flags |= O_NONBLOCK;
-	if (fcntl(fd, F_SETFL, flags) < 0) {
-		perror("fcntl()");
-		close(fd);
-		goto error;
-	}
-	*/
-
 	struct epoll_event events;
 	//events.events  = EPOLLIN | EPOLLET;
 	events.events  = EPOLLIN;
@@ -308,47 +279,6 @@ error:
 	return -1;
 }
 
-/*
-static int __process_request(struct master *mas, int fd) {
-	int rc = 0;
-	int len;
-	int n_obj;
-	uint64_t hash_high;
-	int hlr_idx;
-
-	len = read_sock_bulk(fd, mas->netreq_buf, MAX_NETREQ_BUF, sizeof(struct netreq));
-	if (len == -1) {
-		goto exit;
-	} else if (len == 0) {
-		close(fd);
-		epoll_ctl(mas->epfd, EPOLL_CTL_DEL, fd, NULL);
-		printf("A client (fd:%d) is disconnected ...\n", fd);
-		rc = 1;
-		goto exit;
-	}
-	mas->buf_len += len;
-
-	n_obj = len / sizeof(struct netreq);
-
-	for (int i = 0; i < n_obj; i++) {
-		// TODO: request handling
-		struct netreq *nr = &mas->netreq_buf[i];
-		hash_high = hashing_key_128(nr->key, nr->keylen).first;
-		hlr_idx = (hash_high >> 32) % mas->num_dev;
-
-		struct request *req = make_request_from_netreq(mas->hlr[hlr_idx], nr, fd);
-
-		rc = forward_req_to_hlr(mas->hlr[hlr_idx], req);
-		if (rc) {
-			goto exit;
-		}
-	}
-
-exit:
-	return rc;
-}
-*/
-
 static int __netreq_parse_and_make_request (struct master *mas, int fd) {
 	uint64_t hash_high;
 	int hlr_idx;
@@ -369,7 +299,6 @@ static int __netreq_parse_and_make_request (struct master *mas, int fd) {
 		if (req->type == REQ_TYPE_GET)
 			sw_start(req->sw_bd[6]);
 #endif
-		//printf("hash_high: %lu, hlr_idx: %lu\n", hash_high, hlr_idx);
 		rc = forward_req_to_hlr(mas->hlr[hlr_idx], req);
 #ifdef BREAKDOWN
 		if (req->type == REQ_TYPE_GET)
@@ -402,7 +331,6 @@ static int __redis_parse_and_make_request (struct master *mas, int fd) {
 	while (1) {
 		fault_req = false;
 		error err = redis_read_command(cli);
-		//redis_print_args(mas);
 		if (err != NULL) {
 			if ((char *)err == (char *)ERR_INCOMPLETE) {
 				rc = 0;
@@ -453,7 +381,6 @@ static int __redis_parse_and_make_request (struct master *mas, int fd) {
 
 	static double old_nr_read = 0, old_nr_read_miss = 0, miss_rate;
 
-	//if ((++count%10000) == 0) {
 	sw_end(print_sw);
 	if (sw_get_sec(print_sw) >= 1) {
 		printf("Processed requests ITER: %lu\n", ++G_count);

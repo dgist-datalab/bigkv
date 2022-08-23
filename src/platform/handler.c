@@ -23,7 +23,6 @@ bool stopflag_hlr;
 extern int first;
 
 struct handler *handler_init(struct master *mas, struct handler *hlr, char **dev_name, int num_dev, int num_dev_per_hlr, int num_hlr) {
-	//struct handler *hlr = (struct handler *)calloc(1, sizeof(struct handler));
 	memset(hlr, 0, sizeof(struct handler));
 
 	hlr->num_hlr = num_hlr;
@@ -133,7 +132,6 @@ void handler_free(struct handler *hlr) {
 	cl_free(hlr->flying);
 
 	q_free(hlr->req_q);
-	//lfq_free(hlr->req_q);
 	q_free(hlr->retry_q);
 	q_free(hlr->done_q);
 	q_free(hlr->submit_q);
@@ -172,8 +170,6 @@ void handler_free(struct handler *hlr) {
 	free(hlr->amf_cdf_table);
 	free(hlr->amf_bytes_cdf_table);
 #endif
-
-	//free(hlr);
 }
 
 int forward_req_to_hlr(struct handler *hlr, struct request *req) {
@@ -184,12 +180,6 @@ int forward_req_to_hlr(struct handler *hlr, struct request *req) {
 	if (!q_enqueue((void *)req, hlr->req_q)) {
 		rc = -1;
 	}
-	/*
-	if (hlr->req_q->size > QSIZE/2) {
-		printf("put request[%p] %d %d %d\n", hlr, ++cnt, hlr->req_q->size, hlr->req_q->m_size);
-		usleep(10);
-	}
-	*/
 	return rc;
 }
 
@@ -198,7 +188,6 @@ int move_req_to_other(struct handler *hlr, struct request *req) {
 	static int cnt = 0;
 	struct request *new_req;
 	if (hlr == NULL) {
-		printf("ASDASD\n");
 		abort();
 	}
 	cl_grap(hlr->flying);
@@ -224,12 +213,6 @@ int move_req_to_other(struct handler *hlr, struct request *req) {
 	if (!q_enqueue((void *)new_req, hlr->req_q)) {
 		rc = -1;
 	}
-	/*
-	if (hlr->req_q->size > QSIZE/2) {
-		printf("put request[%p] %d %d %d\n", hlr, ++cnt, hlr->req_q->size, hlr->req_q->m_size);
-		usleep(10);
-	}
-	*/
 	return rc;
 }
 
@@ -282,7 +265,6 @@ static void *request_handler(void *input) {
 	pthread_setname_np(pthread_self(), thread_name);
 
 
-	printf("numa_preferred: %d\n", numa_preferred());
 	numa_set_localalloc();
 	numa_set_strict(numa_preferred());
 
@@ -290,7 +272,6 @@ static void *request_handler(void *input) {
 	hlr->flying = cl_init(QSIZE, false);
 
 	q_init(&hlr->req_q, QSIZE);
-	//lfq_init(&hlr->req_q, QSIZE);
 	q_init(&hlr->retry_q, QSIZE);
 	q_init(&hlr->done_q, QSIZE);
 	q_init(&hlr->submit_q, QSIZE * 2);
@@ -308,7 +289,6 @@ static void *request_handler(void *input) {
 	hlr->req_arr = (struct request *)calloc(QSIZE, sizeof(struct request));
 	for (int i = 0; i < QSIZE; i++) {
 		q_enqueue((void *)&hlr->req_arr[i], hlr->req_pool);
-		//lfq_enqueue((void *)&hlr->req_arr[i], hlr->req_pool);
 	}
 
 
@@ -363,7 +343,6 @@ static void *request_handler(void *input) {
 			hlr->ops[i] = (hlr - hlr->number)->ops[0];
 		}
 	}
-	//printf("number: %d, hlr: %p, hlr->ops: %p cal_hlr: %p dev: %p\n", hlr->number,hlr, hlr->ops, hlr-hlr->number, hlr->dev);
 #else
 	for (int i = 0; i < hlr->num_dev_per_hlr; i++) {
 		hlr->ops[i]->init(hlr->ops[i]);
@@ -401,9 +380,6 @@ static void *request_handler(void *input) {
 		q_enqueue((void*)value_ptr, hlr->value_pool);
 	}
 
-	printf("HANDLER[%d] INIT FINISHIED\n", hlr->number);
-	fflush(stdout);
-
 	pthread_barrier_wait(hlr->barrier);
 
 	stopwatch *sw = sw_create();
@@ -431,12 +407,9 @@ completion_req:
 #endif
 
 		if (hlr->flying->now == QSIZE) {
-			//printf("FLYING FULL\n");
-			//continue;
 		}
 
 		if (!(req=get_next_request(hlr))) {
-			//usleep(1000);
 			continue;
 		}
 
@@ -474,7 +447,6 @@ completion_req:
 
 process_req:
 		while ((cb = (struct callback *)q_dequeue(hlr->done_q))) {
-			printf("cb call??\n");
 			cb->func(cb->arg);
 			q_enqueue((void *)cb, hlr->cb_pool);
 		}
@@ -488,15 +460,6 @@ process_req:
 			set_value(&req->value, VALUE_LEN_MAX, NULL, 1, hlr);
 			rc = ops->get_kv(ops, req);
 			if (rc) {
-				//puts("Not existing key!");
-				//printf("%lu\n", req->key.hash_low);
-				//printf("%s\n", req->key.key);
-#ifdef CASCADE
-				//printf("%d\n", ((struct cas_params *)req->params)->read_step);
-#endif
-				//static int not_exist = 0;
-				//if ((++not_exist % 10) == 0)
-				//	printf("not: %d\n", not_exist);
 				req->end_req(req);
 			}
 			break;

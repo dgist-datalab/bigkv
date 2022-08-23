@@ -1,7 +1,13 @@
 bin/
+bin_exp
 obj/
 lib/
 result/
 script/YCSB
 script/simulation
+src/simulation
+exp/ycsb/ycsb_memcached.sh
+exp/ycsb/ycsb_memcached.sh
+exp/ycsb/log
+Makefile.old
 *.swp

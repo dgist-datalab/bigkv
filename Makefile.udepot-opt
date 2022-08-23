@@ -1,0 +1,115 @@
+SRC_DIR = ./src
+OBJ_DIR = ./obj
+LIB_DIR = ./lib
+BIN_DIR = ./bin
+INC_DIR = ./include \
+		  -I ./../liburing/src/include \
+#		  -I ./../spdk/include \
+
+CC = g++
+
+CFLAGS += \
+	-Wall \
+	-g \
+	-Wno-unused-function \
+	-Wno-unused \
+	-std=c++11 \
+	-O2 \
+
+LIBS += \
+	-lcityhash \
+	-lpthread \
+	-laio \
+	-lnuma \
+#	-L./../liburing/src -luring \
+	-lspdk \
+	-lspdk_env_dpdk \
+	-lspdk_env_dpdk_rpc \
+	-ldpdk \
+	-lspdk_nvme \
+	-lspdk_util \
+	-lspdk_event \
+	-lspdk_sock \
+	-lspdk_log \
+	-lspdk_json \
+	-lspdk_jsonrpc \
+	-lspdk_rpc \
+	-L./../spdk/dpdk/build/lib -lrte_eal \
+	-L./../spdk/dpdk/build/lib -lrte_telemetry \
+
+COMMON_DEFS += \
+	-DCITYHASH \
+	-DUNIFORM \
+	-DCDF \
+	-DAMF_CDF \
+	-DPER_CORE \
+	-DCPU_PIN_NUMA \
+	-DLINUX_AIO \
+	-DREDIS \
+	-DTTL \
+	-DRAND_TTL \
+	-DHOPSCOTCH \
+	-DHOPSCOTCH_FULL \
+#	-DTEST_GC \
+#	-DHLR_POLLING \
+#	-DDEV_SPDK \
+#	-DPRINT_QD \
+#	-DBREAKDOWN \
+#	-DUSE_HUGEPAGE\
+#	-DURING \
+#	-DLINUX_AIO \
+#	-DCPU_PIN \
+#	-DRAMDISK \
+
+OBJ_SRC += \
+	$(SRC_DIR)/index/hopscotch.c \
+	$(SRC_DIR)/index/bigkv_index.c \
+	$(SRC_DIR)/index/cascade.c \
+	$(SRC_DIR)/platform/util.c \
+	$(SRC_DIR)/platform/keygen.c \
+	$(SRC_DIR)/platform/master.c \
+	$(SRC_DIR)/platform/client.c \
+	$(SRC_DIR)/platform/request.c \
+	$(SRC_DIR)/platform/handler.c \
+	$(SRC_DIR)/platform/request.c \
+	$(SRC_DIR)/platform/device.c \
+	$(SRC_DIR)/platform/poller.c \
+	$(SRC_DIR)/platform/aio.c \
+	$(SRC_DIR)/platform/uring.c \
+	$(SRC_DIR)/platform/dev_spdk.c \
+	$(SRC_DIR)/platform/redis.c \
+	$(SRC_DIR)/platform/redis_exec.c \
+	$(SRC_DIR)/utility/queue.c \
+	$(SRC_DIR)/utility/lfqueue.c \
+	$(SRC_DIR)/utility/cond_lock.c \
+	$(SRC_DIR)/utility/lru_cache.c \
+	$(SRC_DIR)/utility/art.c \
+	$(SRC_DIR)/utility/list.c \
+	$(SRC_DIR)/utility/ttl.c \
+	$(SRC_DIR)/utility/bloomfilter.c \
+	$(SRC_DIR)/utility/murmur3.c \
+
+TARGET_OBJ =\
+		$(patsubst %.c,%.o,$(OBJ_SRC))\
+
+all: udepot-opt
+
+udepot-opt: $(SRC_DIR)/server.cc $(LIB_DIR)/libbigkv.a
+	@mkdir -p $(BIN_DIR)
+	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(LIBS) $(COMMON_DEFS) -I$(INC_DIR)
+
+$(LIB_DIR)/libbigkv.a: $(TARGET_OBJ)
+	@mkdir -p $(LIB_DIR)
+	@mv $(SRC_DIR)/platform/*.o $(OBJ_DIR)
+	@mv $(SRC_DIR)/index/*.o $(OBJ_DIR)
+	@mv $(SRC_DIR)/utility/*.o $(OBJ_DIR)
+	$(AR) r $@ $(OBJ_DIR)/*
+
+.c.o:
+	$(CC) $(CFLAGS) $(LIBS) $(COMMON_DEFS) -c $< -o $@ -I$(INC_DIR)
+
+clean:
+	@rm -vf $(BIN_DIR)/*
+	@rm -vf $(OBJ_DIR)/*.o
+	@rm -vf $(LIB_DIR)/*.o
+	@rm -vf $(LIB_DIR)/libbigkv.a

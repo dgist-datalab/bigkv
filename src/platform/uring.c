@@ -15,9 +15,6 @@ uring_read(struct handler *hlr, struct dev_abs *dev, uint64_t addr_in_byte, uint
 
 	struct io_data *io_data;
 	while ((io_data = (struct io_data *)q_dequeue(cb->hlr->io_data_pool)) == NULL);
-	//if ((io_data = (struct io_data *)q_dequeue(cb->hlr->io_data_pool)) == NULL) {
-	//	return -1;
-	//}
 	if (io_data == NULL)
 		abort();
 	io_data->iovec.iov_base = buf;
@@ -54,9 +51,6 @@ uring_write(struct handler *hlr, struct dev_abs *dev, uint64_t addr_in_byte, uin
 
 	struct io_data *io_data;
 	while ((io_data = (struct io_data *)q_dequeue(cb->hlr->io_data_pool)) == NULL);
-	//if ((io_data = (struct io_data *)q_dequeue(cb->hlr->io_data_pool)) == NULL) {
-	//	return -1
-	//}
 	if (io_data == NULL)
 		abort();
 	io_data->iovec.iov_base = buf;

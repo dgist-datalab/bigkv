@@ -87,7 +87,6 @@ alloc_seg_buffer(uint32_t size) {
 	void *seg_buffer = mmap(NULL, size, PROT_READ | PROT_WRITE,
 				MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, 0, 0);
 #elif DEV_SPDK
-	//void *seg_buffer = aligned_alloc(MEM_ALIGN_UNIT, size);
 	void *seg_buffer = spdk_dma_zmalloc(size, MEM_ALIGN_UNIT, NULL);
 #else
 	void *seg_buffer = aligned_alloc(MEM_ALIGN_UNIT, size);
@@ -122,9 +121,7 @@ dev_abs_init(struct handler *hlr, const char dev_name[], int core_mask, int dev_
 		abort();
 	}
 #elif DEV_SPDK
-	//dev_spdk_open(&dev->sctx, dev->dev_name, core_mask);
 	dev->sctx = hlr->sctx+dev_number;
-	//struct ns_entry *entry = TAILQ_FIRST(&dev->sctx->namespaces);
 	struct ns_entry *entry;
 	TAILQ_FOREACH(entry, &dev->sctx->namespaces, link) {
 		dev->nr_logical_block = spdk_nvme_ns_get_num_sectors(entry->u.nvme.ns);
@@ -155,7 +152,6 @@ dev_abs_init(struct handler *hlr, const char dev_name[], int core_mask, int dev_
 
 	for (size_t i = 0; i < dev->nr_segment; i++) {
 		struct segment *seg = &dev->seg_array[i];
-		//struct segment *seg = (struct segment *)malloc(sizeof(struct segment));
 		seg->idx = i;
 		seg->state = SEG_STATE_FREE;
 
@@ -179,10 +175,6 @@ dev_abs_init(struct handler *hlr, const char dev_name[], int core_mask, int dev_
 		dev->staged_segs[i]->buf = alloc_seg_buffer(dev->segment_size);
 		dev->ttl_fifo[i] = list_init();
 	}
-	//dev->staged_seg = (struct segment *)q_dequeue(dev->free_seg_q);
-	//dev->staged_seg->state = SEG_STATE_DATA;
-	//dev->staged_seg->buf = alloc_seg_buffer(dev->segment_size);
-
 	dev->staged_idx_seg = (struct segment *)q_dequeue(dev->free_seg_q);
 	dev->staged_idx_seg->state = SEG_STATE_IDX;
 	dev->staged_idx_seg->buf = alloc_seg_buffer(dev->segment_size);
@@ -213,7 +205,6 @@ dev_abs_init(struct handler *hlr, const char dev_name[], int core_mask, int dev_
 #ifdef LINUX_AIO
 	memset(&dev->aio_ctx, 0, sizeof(io_context_t));
 	if (io_setup(QDEPTH*2, &dev->aio_ctx) < 0) {
-		perror("io_setup");
 		abort();
 	}
 #endif
@@ -269,9 +260,6 @@ dev_abs_free(struct dev_abs *dev) {
 #ifdef RAMDISK
 	for (int i = 0; i < RAM_SIZE/4096; i++) {
 		free(dev->ram_disk[i]);
-		//printf("dev->ramdisk[%d]: %p\n", i, dev->ram_disk[i]);
-		//if (dev->ram_disk[i] == NULL)
-		//	abort();
 	}
 
 	free(dev->ram_disk);
@@ -374,9 +362,6 @@ static int invalidate_seg_entry(struct handler *hlr, struct dev_abs *dev, uint64
 	if (seg->state == SEG_STATE_FREE) 
 		return -1;
 
-	//if (!is_idx_write && seg->state & SEG_STATE_IDX)
-	//	return SEG_MAX_AGE;
-
 	if (is_idx_write && seg->state & SEG_STATE_DATA)
 		abort();
 
@@ -405,7 +390,6 @@ static int invalidate_seg_entry(struct handler *hlr, struct dev_abs *dev, uint64
 
 	seg->invalid_cnt++;
 	if ((seg->state & SEG_STATE_COMMITTED) && (seg->invalid_cnt == seg->entry_cnt)) {
-		//print_segment(seg, "Should trim");
 		dev->invalid_seg_cnt++;
 		list_move_to_head(dev->committed_seg_list, seg->lnode);
 	} else if (seg->invalid_cnt > seg->entry_cnt) {
@@ -501,8 +485,6 @@ dev_abs_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 		while (size > 0) {
 			cpy_size = size >= 4096 ? 4096 : size%4096;
 
-			//printf("[%p]dev->ram_disk[%d]: %p, %lu\n", dev->ram_disk, ram_addr, dev->ram_disk[ram_addr], addr_in_byte);
-			//fflush(stdout);
 			memcpy(cpy_buf, (dev->ram_disk[ram_addr]) + ram_off, cpy_size);
 			
 			size -= cpy_size;
@@ -654,8 +636,6 @@ uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_i
 	}
 	ss->offset += size;
 
-	//printf("get next pba size: %u, pba: %lu, dev_idx: %d\n", size, pba, dev_idx);
-
 	return pba;
 }
 
@@ -726,8 +706,6 @@ static bool is_victim(struct dev_abs *dev, struct segment *seg) {
 		if (seg->state & SEG_STATE_DATA) dev->victim_larger_valid_data_seg_cnt++;
 		dev->fail_victim_entry_cnt += seg->entry_cnt;
 		dev->fail_victim_invalid_cnt += seg->invalid_cnt;
-		printf("entry: %d, invalid: %d, valid: %f\n",seg->entry_cnt, seg->invalid_cnt, (double)valid_cnt/seg->entry_cnt);
-		//return false;
 		return true;
 	}
 
@@ -740,7 +718,6 @@ static bool is_victim(struct dev_abs *dev, struct segment *seg) {
 		dev->victim_invalid_data_cnt += seg->invalid_cnt;
 		dev->victim_entry_data_cnt += seg->entry_cnt;
 	} else {
-		printf("invalid seg state\n");
 		abort();
 	}
 
@@ -771,19 +748,6 @@ static struct segment *select_gc_victim_seg(struct handler *hlr, struct dev_abs 
 		seg = (struct segment *)dev->ttl_fifo[fifo_idx]->head->data;
 	}
 
-	/*
-	list_for_each_node(committed_seg_list, cur) {
-		seg = (struct segment *)cur->data;
-		if (is_victim(dev, seg)) {
-			goto success;
-		}
-	}
-
-	dev_print_gc_info(hlr, dev);
-	printf("fail to select a victim segment, valid: %f\n", \
-			1 - ((double)dev->fail_victim_invalid_cnt/(double)dev->fail_victim_entry_cnt));
-	*/
-
 	return seg;
 }
 
@@ -811,7 +775,6 @@ int dev_read_victim_segment(struct handler *hlr, struct dev_abs *dev, struct gc 
 			dev->victim_trim_data_seg_cnt++;
 			gc->is_idx = 0;
 		}
-		//printf("무야호 IDX: %d, DATA: %d\n",dev->victim_trim_idx_seg_cnt, dev->victim_trim_data_seg_cnt);
 		gc->_private = victim_seg;
 		gc->valid_cnt = 0;
 

@@ -12,148 +12,12 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
-
-#if 0
-redis *redis_new(){
-	redis *c = (redis*)calloc(1, sizeof(redis));
-	if (!c){
-		err(1, "malloc");
-	}
-	c->mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
-	c->buf = (char*)malloc(BUFSIZE);
-	c->output = (char*)malloc(OUTPUT_BUFSIZE);
-	pthread_mutex_init(c->mutex, NULL); 
-	printf("clnt new\n");
-	return c;
-}
-
-void redis_free(redis *c){
-	if (!c){
-		return;
-	}
-	if (c->buf){
-		free(c->buf);
-	}
-	if (c->args){
-		free(c->args);
-	}
-	if (c->args_size){
-		free(c->args_size);
-	}
-	if (c->output){
-		free(c->output);
-	}
-	if (c->tmp_err){
-		free(c->tmp_err);
-	}
-	if (c->mutex) {
-		pthread_mutex_destroy(c->mutex);
-	}
-	free(c);
-}
-
-
-void redis_close(redis *c){
-	redis_free(c);
-}
-#endif
-
 const char *ERR_INCOMPLETE = "incomplete";
 const char *ERR_QUIT = "quit";
 
 inline void redis_output_require(struct client *cli, size_t siz){
-	/*
-	if (c->output_cap < siz){
-		while (c->output_cap < siz){
-			if (c->output_cap == 0){
-				c->output_cap = 1;
-			}else{
-				c->output_cap *= 2;
-			}
-		}
-		c->output = (char*)realloc(c->output, c->output_cap);
-		if (!c->output){
-			err(1, "malloc");
-		}
-	}
-	*/
+	return;
 }
-#if 0
-void redis_write(struct client *cli, const char *data, int n){
-	redis_output_require(cli, cli->output_len+n);
-	memcpy(cli->output+cli->output_len, data, n);	
-	cli->output_len+=n;
-}
-
-void redis_write_data(struct client *cli, const char *data, int n){
-	redis_output_require(cli, cli->output_len+n);
-	memcpy(cli->output+cli->output_len, data, n);	
-	cli->output_len+=n;
-}
-
-void redis_clear(struct client *cli){
-	cli->output_len = 0;
-	cli->output_offset = 0;
-}
-
-void redis_write_byte(struct client *cli, char b){
-	redis_output_require(cli, cli->output_len+1);
-	cli->output[cli->output_len++] = b;
-}
-
-void redis_write_bulk(struct client *cli, const char *data, int n){
-	char h[32];
-	sprintf(h, "$%d\r\n", n);
-	redis_write(cli, h, strlen(h));
-	redis_write_data(cli, data, n);
-	redis_write_byte(cli, '\r');
-	redis_write_byte(cli, '\n');
-}
-
-void redis_write_multibulk(struct client *cli, int n){
-	char h[32];
-	sprintf(h, "*%d\r\n", n);
-	redis_write(cli, h, strlen(h));
-}
-
-void redis_write_int(struct client *cli, int n){
-	char h[32];
-	sprintf(h, ":%d\r\n", n);
-	redis_write(cli, h, strlen(h));
-}
-
-void redis_write_error(struct client *cli, error err){
-	redis_write(cli, "-ERR ", 5);
-	redis_write(cli, err, strlen(err));
-	redis_write_byte(cli, '\r');
-	redis_write_byte(cli, '\n');
-}
-
-
-void redis_flush_offset(struct client *cli, int offset){
-	if (cli->output_len-offset <= 0){
-		return;
-	}
-	ssize_t ret;
-	size_t sent = 0;
-	size_t size = cli->output_len - offset;
-	while ( sent < size ) {
-		ret = write(cli->fd, cli->output + offset, cli->output_len - offset);
-		if (ret < 0 && errno != EWOULDBLOCK) {
-			perror("flush_offset");
-			exit(1);
-		}
-		sent += ret;
-		offset += ret;
-	}
-	cli->output_len = 0;
-}
-
-
-void redis_flush(struct client *cli){
-	redis_flush_offset(cli, 0);
-}
-#endif
 
 static void redis_write(int sock, const char *data, int n){
 	if (write(sock, data, n) < 0)
@@ -161,10 +25,6 @@ static void redis_write(int sock, const char *data, int n){
 }
 
 void redis_write_multibulk(int sock, int n){
-	//char h[32];
-	//sprintf(h, "*%d\r\n", n);
-	//redis_write(sock, h, strlen(h));
-
 	if (write(sock, "*1\r\n$-1\r\n", 9) < 0)
 		abort();
 }
@@ -214,7 +74,6 @@ void redis_append_arg(struct client *cli, const char *data, int nbyte){
 			cli->args_cap*=2;
 		}
 		cli->args = (const char**)realloc(cli->args, cli->args_cap*sizeof(const char *));
-		printf("alloc!!!\n");
 		if (!cli->args){
 			//err(1, "malloc");
 		}
@@ -298,12 +157,10 @@ error redis_read_command(struct client *cli){
 	size_t i = cli->buf_start;
 	size_t z = cli->buf_start + cli->buf_len;
 	int args_len, bulk_flag = 0;
-//	printf("first buf_idx : %d buf_len : %d\n", c->buf_idx, c->buf_len);
 	if (i >= z){
 		return ERR_INCOMPLETE;
 	}
 	if ( (cli->buf[i] != '*') && (cli->buf[i] != '$') && (cli->buf[i] != '+')) {
-		//printf("first buf_idx : %d buf_len : %d\n%s", c->buf_idx, c->buf_len, &c->buf[c->buf_idx]);
 		return redis_parse_telnet_command(cli);
 	}
 	if (cli->buf[i] == '$') {
@@ -318,7 +175,6 @@ error redis_read_command(struct client *cli){
 		if (cli->buf_len < 5) {
 			return ERR_INCOMPLETE;
 		}
-		//memcpy(str, &c->buf[i],4);
 		if (strncmp(&cli->buf[i], "OK\r\n", 4) == 0) {
 			redis_append_arg(cli, "OK", 2);
 			cli->buf_len -= 5;
@@ -450,16 +306,12 @@ int redis_parse_commands(struct client *cli){
 			if ((char*)err == (char*)ERR_INCOMPLETE){
 				return 1;
 			}
-			//redis_write_error(cli, err);
 			return 0;
 		}
-		//redis_print_args(cli);
-		//err = redis_exec_command(cli);
 		if (err != NULL){
 			if (err == ERR_QUIT){
 				return 0;
 			}
-			//redis_write_error(cli, err);
 			return 1;
 		}
 	}

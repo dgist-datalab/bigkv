@@ -49,7 +49,6 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 	if (opts.io_queue_requests < entry->num_io_requests) {
 		opts.io_queue_requests = entry->num_io_requests;
 	}
-	printf("opts.io_queue_reqeusts = %d\n", opts.io_queue_requests);
 	opts.io_queue_requests = 65536;
 	opts.delay_cmd_submit = true;
 	opts.create_only = true;
@@ -126,9 +125,6 @@ io_data_complete(struct io_data *io_data) {
 
 	cb->func(cb->arg);
 	q_enqueue((void *)cb, cb->hlr->cb_pool);
-	//if (io_data->read) {
-	//	spdk_dma_free(io_data->iovec.iov_base);
-	//}
 	q_enqueue((void *)io_data, cb->hlr->io_data_pool);
 }
 
@@ -168,7 +164,6 @@ nvme_submit_io(struct io_data *io_data, struct ns_worker_ctx *ns_ctx,
 	}
 	
 	static int num = 0;
-	//printf("보내보자 %d\n", ++num);
 	if (io_data->read) {
 		return spdk_nvme_ns_cmd_read(entry->u.nvme.ns, ns_ctx->u.nvme.qpair[qp_num],
 						    io_data->iovec.iov_base,
@@ -644,7 +639,6 @@ add_trid(struct spdk_ctx *sctx, const char *trid_str)
 		trid_entry->hostnqn[len] = '\0';
 	}
 
-	printf("add trid\n");
 	trid_entry->sctx = sctx;
 	TAILQ_INSERT_TAIL(&sctx->trid_list, trid_entry, tailq);
 	return 0;
@@ -690,8 +684,6 @@ associate_workers_with_ns(struct spdk_ctx *sctx)
 		if (!ns_ctx) {
 			return -1;
 		}
-
-		printf("Associating %s\n", entry->name);
 		ns_ctx->stats.min_tsc = UINT64_MAX;
 		ns_ctx->entry = entry;
 		TAILQ_INSERT_TAIL(&sctx->ns_ctx, ns_ctx, link);
@@ -709,10 +701,6 @@ associate_workers_with_ns(struct spdk_ctx *sctx)
 int dev_spdk_open (struct spdk_ctx *sctx, char *dev_name)
 {
 	int rc;
-	/*
-	struct spdk_env_opts opts;
-	char str_mask[10] = {0,};
-	*/
 	char str_trid[128] = {0,};
 	struct ns_worker_ctx *ns_ctx;
 
@@ -721,25 +709,6 @@ int dev_spdk_open (struct spdk_ctx *sctx, char *dev_name)
 	sctx->namespaces = TAILQ_HEAD_INITIALIZER(sctx->namespaces);
 	sctx->ns_ctx = TAILQ_HEAD_INITIALIZER(sctx->ns_ctx);
 	sctx->num_namespaces = 0;
-
-	/*
-	spdk_env_opts_init(&opts);
-	opts.name = "bigkv_spdk";
-	opts.pci_allowed = sctx->allowed_pci_addr;
-	snprintf(str_mask, 10, "%d", core_mask);
-	printf("STRING %s\n", str_mask);
-	opts.core_mask = str_mask;
-	if (core_mask != spdk_env_get_current_core()) {
-		printf("current %d\n", spdk_env_get_current_core());
-	}
-	//add_allowed_pci_device(dev_name, &opts);
-	//add_trid(sctx, "trtype:PCIe");
-	if (spdk_env_init(&opts) < 0) {
-		fprintf(stderr, "Unable to initialize SPDK env\n");
-		rc = -1;
-		goto cleanup;
-	}
-	*/
 
 	snprintf(str_trid, 128, "trtype:PCIe traddr:%s", dev_name);
 	add_trid(sctx, str_trid);
@@ -758,19 +727,6 @@ int dev_spdk_open (struct spdk_ctx *sctx, char *dev_name)
 		goto cleanup;
 	}
 	
-	/*
-	if (g_num_workers > 1 && g_quiet_count > 1) {
-		fprintf(stderr, "Error message rate-limiting enabled across multiple threads.\n");
-		fprintf(stderr, "Error suppression count may not be exact.\n");
-	}
-
-	rc = pthread_create(&thread_id, NULL, &nvme_poll_ctrlrs, NULL);
-	if (rc != 0) {
-		fprintf(stderr, "Unable to spawn a thread to poll admin queues.\n");
-		goto cleanup;
-	}
-	*/
-
 	if (associate_workers_with_ns(sctx) != 0) {
 		rc = -1;
 		goto cleanup;
@@ -784,11 +740,6 @@ int dev_spdk_open (struct spdk_ctx *sctx, char *dev_name)
 
 
 cleanup:
-	//unregister_trids(sctx);
-	//unregister_namespaces(sctx);
-	//unregister_controllers(sctx);
-
-	printf("DEV SCTX: %p\n", sctx);
 
 	return rc;
 }
@@ -804,10 +755,6 @@ int dev_spdk_env_init (char *core_mask)
 	spdk_env_opts_init(&opts);
 	opts.name = "bigkv_spdk";
 	opts.core_mask = str_mask;
-	//opts.pci_allowed = sctx->allowed_pci_addr;
-	//if (core_mask != spdk_env_get_current_core()) {
-	//	printf("current %d\n", spdk_env_get_current_core());
-	//}
 	if (spdk_env_init(&opts) < 0) {
 		fprintf(stderr, "Unable to initialize SPDK env\n");
 		rc = -1;
@@ -849,7 +796,6 @@ dev_spdk_read(struct handler *hlr, struct dev_abs *dev, uint64_t addr_in_byte, u
 		while ((io_data = (struct io_data *)q_dequeue(cb->hlr->io_data_pool)) == NULL);
 
 		io_data->iovec.iov_base = buf;
-		//io_data->iovec.iov_base = spdk_dma_zmalloc(8192, 4096, NULL);
 		io_data->iovec.iov_len = size;
 		io_data->data = cb;
 		io_data->read = 1;
@@ -857,16 +803,6 @@ dev_spdk_read(struct handler *hlr, struct dev_abs *dev, uint64_t addr_in_byte, u
 
 		if((rc = nvme_submit_io(io_data, ns_ctx, ns_ctx->entry)) < 0) {
 			perror("nvme_sumbit");
-			if (rc == -ENOMEM) {
-				printf("R error 1\n");
-			} else if (rc == -EINVAL) {
-				printf("R error 2\n");
-			} else if (rc == -ENXIO) {
-				printf("R error 3\n");
-			} else {
-				printf("R error %d\n", rc);
-			}
-			fflush(stdout);
 			rc = -1;
 			abort();
 		}
@@ -895,17 +831,6 @@ dev_spdk_write(struct handler *hlr, struct dev_abs *dev, uint64_t addr_in_byte, 
 		io_data->offset = addr_in_byte;
 
 		if((rc = nvme_submit_io(io_data, ns_ctx, ns_ctx->entry)) < 0) {
-			perror("nvme_sumbit");
-			if (rc == -ENOMEM) {
-				printf("W error 1\n");
-			} else if (rc == -EINVAL) {
-				printf("W error 2\n");
-			} else if (rc == -ENXIO) {
-				printf("W error 3\n");
-			} else {
-				printf("W error %d\n", rc);
-			}
-			fflush(stdout);
 			rc = -1;
 			abort();
 		}

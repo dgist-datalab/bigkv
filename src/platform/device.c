@@ -726,18 +726,9 @@ dev_abs_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 	reap_committed_seg(dev);
 
 
-	//if (addr_in_byte >= 2097152 && addr_in_byte <= 3097152)
-	//	printf("!!!!!!!!!!!!!!!!!!! %d %d\n", addr_in_byte, size);
 #ifndef PER_CORE
 	pthread_mutex_lock(&dev->dev_lock);
 #endif
-
-	/*
-	if (pba == debug_pba) {
-			printf("[READ@@@@@] %ld %ld %lu %d %p\n", size, addr_in_byte, pba, dev_idx, dev);
-	}
-	*/
-
 
 	if ((seg = is_staged(dev, pba)) != NULL) {
 		uint64_t offset = addr_in_byte - seg->start_addr;
@@ -763,11 +754,7 @@ dev_abs_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 	} else if ((seg = is_flying(dev, pba)) != NULL) {
 		uint64_t offset = addr_in_byte - seg->start_addr;
 		memcpy(buf, (char *)seg->buf + offset, size);
-		//printf("FLYING!!!! seg->start: %llu, seg->offset: %llu, addr: %llu, size: %llu, offset: %llu\n", seg->start_addr, seg->offset, addr_in_byte, size, offset);
 		if (offset > SEGMENT_SIZE) abort();
-
-		//return aio_read(hlr, addr_in_byte, size, buf, cb);
-
 
 #ifdef BREAKDOWN
 		if (req->type == REQ_TYPE_GET) {
@@ -797,20 +784,8 @@ dev_abs_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 #ifndef PER_CORE
 		pthread_mutex_unlock(&dev->dev_lock);
 #endif
-			//abort();
-			printf("FREE SEG!!!\n");
 			return -1;
 		}
-		//seg = dev->staged_idx_seg;
-		//if (addr_in_byte > seg->offset) abort();
-		//printf("[READ] %ld %ld %d\n", size, addr_in_byte, dev_idx);
-		/*
-		if (pba == debug_pba) {
-			printf("[READ] %ld %ld %lu %d %p\n", size, addr_in_byte, pba, dev_idx, dev);
-		}
-		fflush(stdout);
-		*/
-		//
 #ifndef PER_CORE
 		pthread_mutex_unlock(&dev->dev_lock);
 #endif
@@ -864,9 +839,6 @@ dev_abs_poller_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 	uint32_t size = size_in_grain * dev->grain_unit;
 	uint64_t addr_in_byte = pba * dev->grain_unit;
 
-	//if (addr_in_byte >= 2097152 && addr_in_byte <= 3097152)
-	//	printf("!!!!!!!!!!!!!!!!!!! %d %d\n", addr_in_byte, size);
-
 	if ((seg = is_staged(dev, pba)) != NULL) {
 		uint64_t offset = addr_in_byte - seg->start_addr;
 		memcpy(buf, (char *)seg->buf + offset, size);
@@ -879,10 +851,7 @@ dev_abs_poller_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 	} else if ((seg = is_flying(dev, pba)) != NULL) {
 		uint64_t offset = addr_in_byte - seg->start_addr;
 		memcpy(buf, (char *)seg->buf + offset, size);
-		//printf("FLYING!!!! seg->start: %llu, seg->offset: %llu, addr: %llu, size: %llu, offset: %llu\n", seg->start_addr, seg->offset, addr_in_byte, size, offset);
 		if (offset > SEGMENT_SIZE) abort();
-
-		//return aio_read(hlr, addr_in_byte, size, buf, cb);
 
 		if (cb->func)
 			cb->func(cb->arg);
@@ -895,9 +864,6 @@ dev_abs_poller_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 			q_enqueue((void *)cb, cb->hlr->cb_pool);	
 			return -1;
 		}
-		//seg = dev->staged_idx_seg;
-		//if (addr_in_byte > seg->offset) abort();
-		//printf("[poller READ] %ld %ld\n", size, addr_in_byte);
 
 #ifdef LINUX_AIO
 		return aio_read(cb->hlr, dev, addr_in_byte, size, buf, cb);
@@ -934,12 +900,6 @@ dev_abs_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t size
 	reap_committed_seg(dev);
 
 	if (offset > SEGMENT_SIZE) abort();
-
-	/*
-	if (pba == debug_pba) {
-		printf("[WRITE] %ld %ld %lu %d %p\n", size, offset, pba, dev_idx, dev);
-	}
-	*/
 
 	memcpy((char *)ss->buf + offset, buf, size);
 
@@ -998,24 +958,9 @@ dev_abs_idx_write(struct handler *hlr, uint64_t pba, uint64_t old_pba, uint32_t 
 
 	if (offset >= SEGMENT_SIZE) abort();
 
-	/*
-	if (old_pba == 33575920) {
-		printf("pba: %lu, old_pba: %lu, size_in_grain: %u\n", pba, old_pba, size_in_grain);
-		print_segment(ss, "idx_write");
-	}
-	*/
-
-
 	memcpy((char *)ss->buf + offset, buf, size);
 
 	memcpy((char*)ss->buf + (ss->entry_cnt * PART_IDX_SIZE), &part_idx, PART_IDX_SIZE);
-	/*
-	if (ss->entry_cnt == 0) {
-		//uint64_t tmp = *ss->buf;
-		printf("idx: %d, part_idx: %lu\n", ss->idx, part_idx);
-	}
-	*/
-	//printf("IDX WRITE pba: %lu, old_pba: %lu, part_idx: %lu, offset: %lu\n", pba,old_pba, part_idx, offset);
 
 	ss->entry_cnt++;
 
@@ -1032,15 +977,6 @@ dev_abs_idx_overwrite(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 	uint32_t size = size_in_grain * dev->grain_unit;
 	uint64_t offset = pba * dev->grain_unit;
 
-
-	/*
-	if (old_pba == 33575920) {
-		printf("pba: %lu, old_pba: %lu, size_in_grain: %u\n", pba, old_pba, size_in_grain);
-		print_segment(ss, "idx_write");
-	}
-	*/
-
-
 #ifdef LINUX_AIO
 	return aio_write(cb->hlr, dev, offset, size, buf, cb);
 #elif URING
@@ -1048,14 +984,6 @@ dev_abs_idx_overwrite(struct handler *hlr, uint64_t pba, uint32_t size_in_grain,
 #elif DEV_SPDK
 	return dev_spdk_write(cb->hlr, dev, offset, size, buf, cb);
 #endif
-
-
-	/*
-	if (ss->entry_cnt == 0) {
-		//uint64_t tmp = *ss->buf;
-		printf("idx: %d, part_idx: %lu\n", ss->idx, part_idx);
-	}
-	*/
 
 	return 0;
 }
@@ -1066,20 +994,7 @@ dev_abs_sync_write(struct handler *hlr, uint64_t pba, uint32_t size_in_grain, ch
 	uint32_t size = size_in_grain * dev->grain_unit;
 	uint64_t offset = pba * dev->grain_unit;
 
-	//printf("[SYNC WRITE] %ld %ld\n", size, offset);
-	
-	//if (((pba < 4224 * GRAIN_UNIT + 16384) && (pba + size > 4224 * GRAIN_UNIT)) || ((pba >= 4224 * GRAIN_UNIT) && pba < (4224 * GRAIN_UNIT + 16384)))
-	//	printf("SIBAL %lu %u\n", pba, size);
-
 	return pwrite(dev->dev_fd, buf, size, offset);
-
-
-	/*
-	if (ss->entry_cnt == 0) {
-		//uint64_t tmp = *ss->buf;
-		printf("idx: %d, part_idx: %lu\n", ss->idx, part_idx);
-	}
-	*/
 }
 
 int
@@ -1088,16 +1003,7 @@ dev_abs_sync_read(struct handler *hlr, uint64_t pba, uint32_t size_in_grain, cha
 	uint32_t size = size_in_grain * dev->grain_unit;
 	uint64_t offset = pba * dev->grain_unit;
 
-	//printf("[SYNC READ] %ld %ld\n", size, offset);
-
 	return pread(dev->dev_fd, buf, size, offset);
-
-	/*
-	if (ss->entry_cnt == 0) {
-		//uint64_t tmp = *ss->buf;
-		printf("idx: %d, part_idx: %lu\n", ss->idx, part_idx);
-	}
-	*/
 }
 
 
@@ -1117,16 +1023,7 @@ reap_seg_buf(void *arg) {
 
 static void *cb_commit_seg (void *arg) {
 	struct segment *seg = (struct segment *)arg;
-	//struct dev_abs *dev = (struct dev_abs *)seg->_private;
-
-	//pthread_mutex_lock(&dev->flying_seg_lock);
-	//list_delete_node(dev->flying_seg_lock, lnode);
 	seg->state |= SEG_STATE_COMMITTED;
-	//pthread_mutex_unlock(&dev->flying_seg_lock);
-
-	//pthread_mutex_lock(&dev->committed_seg_lock);
-	//seg->lnode = list_insert(dev->committed_seg_list, seg);
-	//pthread_mutex_unlock(&dev->committed_seg_lock);
 	return NULL;
 }
 
@@ -1159,15 +1056,10 @@ uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_i
 #endif
 	// if there is no space to alloc kv-pair, need to reclaim old segment
 	if (ss->offset + size > ss->end_addr) {
-		//if (ss->offset % dev->segment_size)
-		//printf("[next_pba] ss->start: %llu, ss->offset: %llu\n", ss->start_addr, ss->offset);
-		//ss->state = SEG_STATE_FLYING;
 		ss->_private = (void *)dev;
 
-		//new_cb = make_callback(hlr, reap_seg_buf, dev->staged_seg_buf);
 		ss->lnode = list_insert(dev->flying_seg_list, ss);
 #ifdef RAMDISK
-		//memcpy(dev->ram_disk + ss->start_addr, (char *)dev->staged_seg->buf, dev->segment_size);
 		for (int i = 0; i < dev->segment_size/4096; i++) {
 			memcpy(dev->ram_disk[ss->start_addr/4096 + i], (char *)(ss->buf) + i * 4096, 4096);
 		}
@@ -1192,7 +1084,6 @@ uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_i
 	pba = ss->offset / dev->grain_unit;
 
 	if (size % dev->grain_unit != 0) {
-		//abort();
 		size += (dev->grain_unit-(size%dev->grain_unit));
 		if (size % dev->grain_unit != 0) abort(); // FIXME: remove later
 	}
@@ -1201,8 +1092,6 @@ uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_i
 #ifndef PER_CORE
 	pthread_mutex_unlock(&dev->dev_lock);
 #endif
-
-	//printf("get next pba size: %u, pba: %lu, dev_idx: %d\n", size, pba, dev_idx);
 
 	return pba;
 }
@@ -1229,9 +1118,6 @@ uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_i
 
 	dev = hlr->dev[dev_idx];
 	ss = dev->staged_segs[ttl_idx];
-
-	if (ttl > 8640000)
-		abort();
 
 	// if there is no space to alloc kv-pair, need to reclaim old segment
 	if (ss->offset + size > ss->end_addr) {
@@ -1262,13 +1148,10 @@ uint64_t get_next_pba(struct handler *hlr, uint32_t size, int hlr_idx, int dev_i
 	pba = ss->offset / dev->grain_unit;
 
 	if (size % dev->grain_unit != 0) {
-		//abort();
 		size += (dev->grain_unit-(size%dev->grain_unit));
 		if (size % dev->grain_unit != 0) abort(); // FIXME: remove later
 	}
 	ss->offset += size;
-
-	//printf("get next pba size: %u, pba: %lu, dev_idx: %d\n", size, pba, dev_idx);
 
 	return pba;
 }
@@ -1284,14 +1167,9 @@ uint64_t get_next_pba_dummy(struct handler *hlr, uint32_t size, int dev_idx) {
 
 	// if there is no space to alloc kv-pair, need to reclaim old segment
 	if (ss->offset + size > ss->end_addr) {
-		//if (ss->offset % dev->segment_size)
-		//	printf("[next_pba] ss->start: %llu, ss->offset: %llu\n", ss->start_addr, ss->offset);
-		//ss->state = SEG_STATE_FLYING;
 		ss->_private = (void *)dev;
 
-		//new_cb = make_callback(hlr, reap_seg_buf, dev->staged_seg_buf);
 		ss->state |= SEG_STATE_COMMITTED;
-		//ss->lnode = list_insert(dev->committed_seg_list, ss);
 		ss->lnode = list_insert(dev->dummy_committed_seg_list, ss);
 		if (ss->buf)
 			free(ss->buf);
@@ -1337,12 +1215,8 @@ uint64_t get_next_idx_pba(struct handler *hlr, uint32_t size, int dev_idx) {
 	if (size % 4096) abort();
 	// if there is no space to alloc kv-pair, need to reclaim old segment
 	if (ss->offset + size > ss->end_addr) {
-		//if (ss->offset % dev->segment_size)
-		//	printf("[next_idx_pba] ss->start: %llu, ss->offset: %llu\n", ss->start_addr, ss->offset);
-		//ss->state = SEG_STATE_FLYING;
 		ss->_private = (void *)dev;
 
-		//new_cb = make_callback(hlr, reap_seg_buf, dev->staged_seg_buf);
 		ss->lnode = list_insert(dev->flying_seg_list, ss);
 		new_cb = make_callback(hlr, cb_commit_seg, ss);
 #ifdef LINUX_AIO
@@ -1389,7 +1263,6 @@ uint64_t get_next_idx_pba(struct handler *hlr, uint32_t size, int dev_idx) {
 
 	struct callback *new_cb;
 
-	if (size % 4096) abort();
 	// if there is no space to alloc kv-pair, need to reclaim old segment
 	if (ss->offset + size > ss->end_addr) {
 		ss->_private = (void *)dev;
@@ -1410,7 +1283,6 @@ uint64_t get_next_idx_pba(struct handler *hlr, uint32_t size, int dev_idx) {
 	}
 
 	pba = ss->offset / dev->grain_unit;
-	//printf("start_addr: %lu, offset: %lu, idx pba: %lu\n", ss->start_addr, ss->offset, pba);
 
 	if (size % dev->grain_unit != 0) {
 		abort();
@@ -1443,8 +1315,6 @@ static bool is_victim(struct dev_abs *dev, struct segment *seg) {
 		if (seg->state & SEG_STATE_DATA) dev->victim_larger_valid_data_seg_cnt++;
 		dev->fail_victim_entry_cnt += seg->entry_cnt;
 		dev->fail_victim_invalid_cnt += seg->invalid_cnt;
-		//printf("entry: %d, invalid: %d, valid: %f\n",seg->entry_cnt, seg->invalid_cnt, (double)valid_cnt/seg->entry_cnt);
-		//return false;
 		return true;
 	}
 
@@ -1457,7 +1327,6 @@ static bool is_victim(struct dev_abs *dev, struct segment *seg) {
 		dev->victim_invalid_data_cnt += seg->invalid_cnt;
 		dev->victim_entry_data_cnt += seg->entry_cnt;
 	} else {
-		printf("invalid seg state\n");
 		abort();
 	}
 
@@ -1476,8 +1345,6 @@ static struct segment *select_gc_victim_seg(struct handler *hlr, struct dev_abs 
 	}
 
 	dev_print_gc_info(hlr, dev);
-	printf("fail to select a victim segment, valid: %f\n", \
-			1 - ((double)dev->fail_victim_invalid_cnt/(double)dev->fail_victim_entry_cnt));
 
 	return NULL;
 
@@ -1514,7 +1381,6 @@ int dev_read_victim_segment(struct handler *hlr, int dev_idx, struct gc *gc) {
 			dev->victim_trim_data_seg_cnt++;
 			gc->is_idx = 0;
 		}
-		//printf("무야호 IDX: %d, DATA: %d\n",dev->victim_trim_idx_seg_cnt, dev->victim_trim_data_seg_cnt);
 		gc->_private = victim_seg;
 		gc->valid_cnt = 0;
 
@@ -1540,8 +1406,6 @@ int dev_read_victim_segment(struct handler *hlr, int dev_idx, struct gc *gc) {
 	gc->valid_cnt = victim_seg->entry_cnt - victim_seg->invalid_cnt;
 	gc->is_idx = victim_seg->state & SEG_STATE_IDX;
 
-
-	//print_segment(victim_seg, "victim");
 
 	return 1;
 
@@ -1586,20 +1450,6 @@ bool dev_need_gc(struct handler *hlr, int dev_idx) {
 }
 
 static bool is_victim(struct dev_abs *dev, struct segment *seg) {
-	/*
-	uint32_t valid_cnt = seg->entry_cnt - seg->invalid_cnt;
-	if (valid_cnt > seg->entry_cnt * GC_VICTIM_THRESHOLD) {
-		dev->victim_larger_valid_seg_cnt++;
-		if (seg->state & SEG_STATE_IDX) dev->victim_larger_valid_idx_seg_cnt++;
-		if (seg->state & SEG_STATE_DATA) dev->victim_larger_valid_data_seg_cnt++;
-		dev->fail_victim_entry_cnt += seg->entry_cnt;
-		dev->fail_victim_invalid_cnt += seg->invalid_cnt;
-		printf("entry: %d, invalid: %d, valid: %f\n",seg->entry_cnt, seg->invalid_cnt, (double)valid_cnt/seg->entry_cnt);
-		//return false;
-		return true;
-	}
-	*/
-
 	if (seg->state & SEG_STATE_IDX) {
 		dev->victim_idx_seg_cnt++;
 		dev->victim_invalid_idx_cnt += seg->invalid_cnt;
@@ -1609,7 +1459,6 @@ static bool is_victim(struct dev_abs *dev, struct segment *seg) {
 		dev->victim_invalid_data_cnt += seg->invalid_cnt;
 		dev->victim_entry_data_cnt += seg->entry_cnt;
 	} else {
-		printf("invalid seg state\n");
 		abort();
 	}
 
@@ -1632,8 +1481,6 @@ bool do_expiration(struct handler *hlr, int dev_idx) {
 		victim = (struct segment *)(fifo_list->head->data);
 		if (victim && (victim->creation_time + ttl_group_std[i] < get_cur_sec())) {
 			exp_cnt++;
-			printf("gc_cnt: %d\n, exp_cnt: %d\n", gc_cnt, exp_cnt);
-			//printf("SEG: %d, CUR SEC: %lu, SEG_EXP: %lu + %lu = %lu\n", victim->idx, get_cur_sec(), victim->creation_time, ttl_group_std[i], victim->creation_time + ttl_group_std[i]);
 			list_delete_node(dev->ttl_fifo[victim->ttl], victim->ttl_lnode);
 			victim->state = SEG_STATE_FREE;
 			victim->entry_cnt = 0;
@@ -1688,19 +1535,6 @@ static struct segment *select_gc_victim_seg(struct handler *hlr, struct dev_abs 
 		seg = (struct segment *)dev->ttl_fifo[fifo_idx]->head->data;
 	}
 
-	/*
-	list_for_each_node(committed_seg_list, cur) {
-		seg = (struct segment *)cur->data;
-		if (is_victim(dev, seg)) {
-			goto success;
-		}
-	}
-
-	dev_print_gc_info(hlr, dev);
-	printf("fail to select a victim segment, valid: %f\n", \
-			1 - ((double)dev->fail_victim_invalid_cnt/(double)dev->fail_victim_entry_cnt));
-	*/
-
 	is_victim(dev,seg);
 
 	return seg;
@@ -1731,7 +1565,6 @@ int dev_read_victim_segment(struct handler *hlr, int dev_idx, struct gc *gc) {
 			dev->victim_trim_data_seg_cnt++;
 			gc->is_idx = 0;
 		}
-		printf("무야호 IDX: %d, DATA: %d\n",dev->victim_trim_idx_seg_cnt, dev->victim_trim_data_seg_cnt);
 		gc->_private = victim_seg;
 		gc->valid_cnt = 0;
 
