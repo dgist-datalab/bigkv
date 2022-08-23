@@ -7,7 +7,7 @@ fi
 
 ycsb_dir="/home/koo/src/YCSB"
 ycsb_workloads_dir="${ycsb_dir}/workloads"
-bigkv_dir="/home/koo/src/bigkv_nrg"
+bigkv_dir="/home/koo/src/bigkv"
 log_path="${bigkv_dir}/exp/ycsb/log/ycsb-$1-$(date +'%Y%m%d-%H%M%S')"
 dev_path="/dev/nvme7n1"
 

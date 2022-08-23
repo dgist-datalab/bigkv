@@ -1,6 +1,8 @@
 #include "platform/handler.h"
 #include "platform/request.h"
+#ifdef DEV_SPDK
 #include "platform/dev_spdk.h"
+#endif
 #include <numa.h>
 #include <errno.h>
 #include <stdio.h>

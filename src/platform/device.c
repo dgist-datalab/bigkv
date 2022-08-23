@@ -3,7 +3,9 @@
 #include "platform/aio.h"
 #include "platform/uring.h"
 #include "platform/request.h"
+#ifdef DEV_SPDK
 #include "platform/dev_spdk.h"
+#endif
 #include "utility/stopwatch.h"
 #include "utility/ttl.h"
 #include <fcntl.h>

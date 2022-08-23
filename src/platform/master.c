@@ -2,7 +2,9 @@
 #include "platform/util.h"
 #include "platform/request.h"
 #include "platform/redis.h"
+#ifdef DEV_SPDK
 #include "platform/dev_spdk.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -143,12 +145,15 @@ struct master *master_init(int num_hlr, int num_dev, char *device[], char *core_
 	struct master *mas = (struct master *)calloc(1, sizeof(struct master));
 	struct handler *hlrs = (struct handler *)malloc(sizeof(struct handler) * num_hlr);
 	int num_dev_per_hlr = num_dev / num_hlr;
+	size_t len;
 
 	// TODO: init master variables
 	mas->num_hlr = num_hlr;
 	mas->num_dev = num_dev;
 	mas->device = device;
-	strncpy(mas->core_mask, core_mask, strlen(core_mask));
+	len = strlen(core_mask);
+	//strncpy(mas->core_mask, core_mask, len);
+	strcpy(mas->core_mask, core_mask);
 
 #ifndef TRACE
 	master_sock_init(mas);

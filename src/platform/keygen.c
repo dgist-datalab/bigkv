@@ -9,6 +9,7 @@
 
 struct keygen *keygen_init(uint64_t nr_key, int key_size, const char username[]) {
 	struct keygen *kg = (struct keygen *)malloc(sizeof(struct keygen));
+	size_t len = 0;
 
 	kg->nr_key = nr_key;
 	kg->key_size = key_size;
@@ -27,7 +28,9 @@ struct keygen *keygen_init(uint64_t nr_key, int key_size, const char username[])
 	kg->key_pool = (kg_key_t *)malloc(sizeof(kg_key_t) * kg->nr_key);
 	for (size_t i = 0; i < kg->nr_key; i++) {
 		kg->key_pool[i] = (kg_key_t)malloc(kg->key_size);
-		strncpy(kg->key_pool[i], username, strlen(username));
+		len = strlen(username);
+		//strcpy(kg->key_pool[i], username, len);
+		strcpy(kg->key_pool[i], username);
 		for (int j = 4; j < kg->key_size; j++) kg->key_pool[i][j] = '0'+(rand()%10);
 	}
 

@@ -18,7 +18,9 @@
 #include "config.h"
 #include "platform/handler.h"
 #include "platform/client.h"
+#ifdef DEV_SPDK
 #include "platform/dev_spdk.h"
+#endif
 #include "platform/keygen.h"
 
 #include <time.h>

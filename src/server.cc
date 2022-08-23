@@ -237,6 +237,7 @@ server_getopt(int argc, char *argv[], struct server *const srv) {
 	};
 
 	int option_index = 0;
+	size_t len = 0;
 
 	while ((c = getopt_long(argc, argv, "d:h:c:f:", long_options, &option_index)) != -1) {
 		switch (c) {
@@ -245,8 +246,9 @@ server_getopt(int argc, char *argv[], struct server *const srv) {
 			srv->num_dev = atoi(optarg);
 			for (int i = 0; i < srv->num_dev; i++) {
 				srv->device[i] = (char *)calloc(32, sizeof(char));
-				strncpy(srv->device[i], argv[optind+i],
-					strlen(argv[optind+i]));
+				len = strlen(argv[optind+i]);
+				//strncpy(srv->device[i], argv[optind+i], len);
+				strcpy(srv->device[i], argv[optind+i]);
 			}
 			break;
 		case 'h':
@@ -256,7 +258,9 @@ server_getopt(int argc, char *argv[], struct server *const srv) {
 			first = atoi(optarg);
 			break;
 		case 'c':
-			strncpy(srv->core_mask, optarg, strlen(optarg));
+			len = strlen(optarg);
+			//strncpy(srv->core_mask, optarg, len);
+			strcpy(srv->core_mask, optarg);
 		case '?':
 			// Error
 			break;

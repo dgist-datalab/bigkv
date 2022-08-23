@@ -88,11 +88,9 @@ cd bigkv
   sudo apt install maven
   ```
 
-  * Java
-
-  ```
-  sudo apt install java-devel
-  ```
+  * Java: Please refer these guides: 
+  
+  - [How To Install Java with Apt on Ubuntu 18.04](https://www.digitalocean.com/community/tutorials/how-to-install-java-with-apt-on-ubuntu-18-04)
 	
   * The YCSB repository provides detailed guide for installation. Following commands decribe the summary of the installation.
 

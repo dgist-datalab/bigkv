@@ -18,7 +18,9 @@
 #include "platform/handler.h"
 #include "utility/queue.h"
 #include "utility/list.h"
+#ifdef DEV_SPDK 
 #include "platform/dev_spdk.h"
+#endif
 #include <liburing.h>
 #include <stdio.h>
 #include <stdint.h>

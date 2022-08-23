@@ -1,6 +1,8 @@
 #include "platform/request.h"
 #include "platform/redis.h"
+#ifdef DEV_SPDK
 #include "platform/dev_spdk.h"
+#endif
 #include "index/cascade.h"
 #include <stdlib.h>
 #include <string.h>

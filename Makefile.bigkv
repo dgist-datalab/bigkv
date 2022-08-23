@@ -8,10 +8,7 @@ INC_DIR = ./include \
 CC = g++
 
 CFLAGS += \
-	-Wall \
 	-g \
-	-Wno-unused-function \
-	-Wno-unused \
 	-std=c++11 \
 	-O2 \
 
@@ -76,7 +73,6 @@ OBJ_SRC += \
 	$(SRC_DIR)/platform/poller.c \
 	$(SRC_DIR)/platform/aio.c \
 	$(SRC_DIR)/platform/uring.c \
-	$(SRC_DIR)/platform/dev_spdk.c \
 	$(SRC_DIR)/platform/redis.c \
 	$(SRC_DIR)/platform/redis_exec.c \
 	$(SRC_DIR)/utility/queue.c \
@@ -88,6 +84,7 @@ OBJ_SRC += \
 	$(SRC_DIR)/utility/ttl.c \
 	$(SRC_DIR)/utility/bloomfilter.c \
 	$(SRC_DIR)/utility/murmur3.c \
+#	$(SRC_DIR)/platform/dev_spdk.c \
 
 TARGET_OBJ =\
 		$(patsubst %.c,%.o,$(OBJ_SRC))\
@@ -100,6 +97,7 @@ bigkv: $(SRC_DIR)/server.cc $(LIB_DIR)/libbigkv.a
 
 $(LIB_DIR)/libbigkv.a: $(TARGET_OBJ)
 	@mkdir -p $(LIB_DIR)
+	@mkdir -p $(OBJ_DIR)
 	@mv $(SRC_DIR)/platform/*.o $(OBJ_DIR)
 	@mv $(SRC_DIR)/index/*.o $(OBJ_DIR)
 	@mv $(SRC_DIR)/utility/*.o $(OBJ_DIR)
