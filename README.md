@@ -134,7 +134,7 @@ cd bigkv
 
 ### Results
 
-  * You can see several results in the `./exp/ycsb/log/ycsb-test-{time}` directory. The directory path names mean configurations of the benchmakrs. The directory paths are formatted as follows: `./ycsb-test-{time}/{cache type}/{total amount of memory for index}/{locality of YCSB workloads}/{results}
+  * You can see several results in the `./exp/ycsb/log/ycsb-test-{time}` directory. The directory path names mean configurations of the benchmakrs. The directory paths are formatted as follows: `./ycsb-test-{time}/{cache type}/{total amount of memory for index}/{locality of YCSB workloads}/{results}`.
 	
   - `cache type`: Currently, we provide four caches as mentioned above.
 
