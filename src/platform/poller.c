@@ -95,7 +95,7 @@ static void *uring_poller(void *input) {
 	while (1) {
 		if (stopflag_hlr) return NULL;
 
-		for (dev_idx = 0; dev_idx < hlr->num_dev_per_hlr, dev_idx++) {
+		for (dev_idx = 0; dev_idx < hlr->num_dev_per_hlr; dev_idx++) {
 			dev = hlr->dev[dev_idx];
 			if (!got_comp) {
 				ret = io_uring_wait_cqe(&dev->ring, &cqe);
