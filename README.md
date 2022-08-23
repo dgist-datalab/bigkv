@@ -6,7 +6,9 @@ The original paper that introduced KEVIN is currently in the revision stage of [
 ## Prerequisites
 * BigKV uses several third parties. The following libraries are essential for executing BigKV with a default setup.
   * These are mandatory libraries to compile BigKV. We summarize commands for installation below. We recommend to check the README file of each repository to use it.
+  
   * [CityHash](https://github.com/google/cityhash)
+   
 	```
 	git clone https://github.com/google/cityhash
 	cd cityhash
@@ -15,6 +17,7 @@ The original paper that introduced KEVIN is currently in the revision stage of [
 	sudo make install
 	```
   * [liburing](https://github.com/axboe/liburing)
+   
 	```
 	git clone https://github.com/axboe/liburing
 	cd liburing
@@ -23,6 +26,7 @@ The original paper that introduced KEVIN is currently in the revision stage of [
 	sudo make install
 	```
   * [libnuma](https://github.com/numactl/numactl)
+  
 	```
 	sudo apt install libnuma-dev
 	```
