@@ -30,6 +30,14 @@ The original paper that introduced KEVIN is currently in the revision stage of [
 	```
 	sudo apt install libnuma-dev
 	```
+	
+  * After installing, put the command for shared library links.
+  
+  ```
+  sudo ldconfig
+  ```
+
+  > ldconfig creates the necessary links and cache to the most recent shared libraries found in the directories specified on the command line, in the file /etc/ld.so.conf, and in the trusted directories (/lib and /usr/lib).
 
 ## Installation
 
