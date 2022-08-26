@@ -59,9 +59,9 @@ COMMON_DEFS += \
 	-DCPU_PIN_NUMA \
 	-DLINUX_AIO \
 	-DREDIS \
-	-DTTL \
-	-DRAND_TTL \
 	-DCASCADE \
+#	-DTTL \
+	-DRAND_TTL \
 #	-DTTL_GROUP \
 #	-DTRACE \
 #	-DTTL \
