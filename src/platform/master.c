@@ -384,7 +384,8 @@ static int __redis_parse_and_make_request (struct master *mas, int fd) {
 		}
 		cli->reqs++;
 
-	static double old_nr_read = 0, old_nr_read_miss = 0, miss_rate;
+	static double old_nr_read = 0, old_nr_read_miss = 0, miss_rate, throughput, old_throughput = 0;
+
 
 	sw_end(print_sw);
 	if (sw_get_sec(print_sw) >= 1) {
@@ -406,7 +407,9 @@ static int __redis_parse_and_make_request (struct master *mas, int fd) {
 		}
 		print_mas_stat(mas);
 		miss_rate = ((double)(mas->stat.nr_read_miss - old_nr_read_miss)) / ((double)((mas->stat.nr_read) - old_nr_read));
-		printf("ITER %lu NR_READ: %lu HIT_RATE: %.6f\n", G_count, mas->stat.nr_read, 1-miss_rate);
+		throughput = ((double)(mas->stat.nr_read + mas->stat.nr_write - old_throughput)/(double)1000);
+		old_throughput = throughput;
+		printf("ITER %lu NR_READ: %lu HIT_RATE: %.6f Throughput: %.6f\n", G_count, mas->stat.nr_read, 1-miss_rate, throughput);
 		memset(&mas->stat, 0, sizeof(struct stats));
 		fflush(stdout);
 		sw_start(print_sw);
@@ -606,7 +609,7 @@ void *master_thread(void *input) {
 				if (rc < 0) {
 					goto exit;
 				}
-				printf("Accepted cilent fd: %d\n", rc);
+				printf("Accepted clientt fd: %d\n", rc);
 			} else {
 				//rc = __process_request(mas, ep_events[i].data.fd);
 				rc = __process_request_circular(mas, ep_events[i].data.fd);
