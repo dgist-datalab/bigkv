@@ -36,7 +36,7 @@ using namespace std;
 
 //#define IDX_BIT 27 // can index a 128 GB stroage device
 //#define IDX_BIT 27 // can idx a 512 GB storage device with 4 KB KV
-#define IDX_BIT 28ULL // can idx a 1024 GB storage device with 4 KB KV
+#define IDX_BIT 25ULL // can idx a 1024 GB storage device with 4 KB KV
 #define DIR_BIT 0 // 1 ==> 2GB
 #define NR_TABLE (1 << DIR_BIT)
 #define NR_ENTRY (1ULL << IDX_BIT)

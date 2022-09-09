@@ -40,7 +40,6 @@ static void server_exit(int sig) {
 		fflush(stdout);
 	}
 	print_mas_sw(mas);
-	printf("asdasdasd\n");
 	fflush(stdout);
 	uint64_t nr_query = 0;
 #ifdef CDF
@@ -284,12 +283,12 @@ int main(int argc, char *argv[]) {
 
 	server_init(&server);
 
-	//signal_reset_add();
-	//signal_print_add();
-	//signal_reset_print_add();
+	signal_reset_add();
+	signal_print_add();
+	signal_reset_print_add();
 	
-	signal_fault_add();
-	signal_repaired_add();
+	//signal_fault_add();
+	//signal_repaired_add();
 	printf("add signal\n");
 
 	pthread_join(server.mas->tid, NULL);
