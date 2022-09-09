@@ -136,8 +136,6 @@ dev_abs_init(struct handler *hlr, const char dev_name[], int core_mask, int dev_
 	}
 #endif
 
-	printf("asdasd %lu\n", dev->size_in_byte);
-
 #ifdef TEST_GC
 	dev->size_in_byte = TEST_GC_CAPACITY;
 #elif TTL
@@ -150,8 +148,6 @@ dev_abs_init(struct handler *hlr, const char dev_name[], int core_mask, int dev_
 	dev->size_in_byte = (uint64_t)dev->nr_logical_block * dev->logical_block_size;
 #endif
 
-
-	printf("asdasd %lu\n", dev->size_in_byte);
 
 	dev->segment_size = SEGMENT_SIZE;
 	dev->nr_segment = dev->size_in_byte / dev->segment_size;
