@@ -7,7 +7,7 @@ fi
 
 ycsb_dir="/home/koo/src/YCSB"
 ycsb_workloads_dir="${ycsb_dir}/workloads"
-bigkv_dir="/home/koo/src/bigkv"
+bigkv_dir="/home/koo/src/ae/bigkv"
 log_path="${bigkv_dir}/exp/ycsb/log/ycsb-$1-$(date +'%Y%m%d-%H%M%S')"
 dev_path="/dev/nvme7n1"
 
@@ -331,7 +331,9 @@ do
 		start_server="start_${test}"
 		kill_server="kill_${test}"
 
-		output_dir_org_perf="$log_path/$test/$mem"
+		output_dir_org_perf="$log_path/$test/"
+		workload=example
+		phase=server
 
 		${start_server}
 
