@@ -34,6 +34,13 @@ void redis_write_ok(int sock) {
 		abort();
 }
 
+void redis_write_int(int sock, int number) {
+	char buf[20] = {0,};
+	snprintf(buf, 20, ":%d\r\n", number); 
+	if (write(sock, buf, strlen(buf)) < 0)
+		abort();
+}
+
 void redis_write_empty_array(int sock) {
 	if (write(sock, "*0\r\n", 4) < 0)
 		abort();

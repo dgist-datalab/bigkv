@@ -345,6 +345,7 @@ static int __redis_parse_and_make_request (struct master *mas, int fd) {
 		}
 		type = redis_convert_type(cli);
 		if (type == REQ_TYPE_ITERATOR) { //FIXME
+			redis_write_int(fd,1);
 			rc = 0;
 			goto exit;
 		} else if (type == REQ_TYPE_UNKNOWN) {
