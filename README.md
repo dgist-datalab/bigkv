@@ -4,6 +4,14 @@ BigKV is a key-value cache specifically designed for caching large objects in an
 The original paper that introduced KEVIN is currently in the revision stage of [ACM/SIGOPS EuroSys 2023](https://2023.eurosys.org/).
 
 ## Prerequisites
+* The hardware/software requirements for executing BigKV are as followed.
+
+### Hardware
+  * `DRAM`: Larger than 4GB for running the server and YCSB benchmark.
+  * `SSD`: At least one SSD, on which the file system is not mounted, is required for running the server.
+  * `CPU`: At least 8 cores are recommended to run a server (3 threads) and YCSB (100 clients).
+
+### Software
 * BigKV uses several third parties. The following libraries are essential for executing BigKV with a default setup.
   * These are mandatory libraries to compile BigKV. We summarize commands for installation below. We recommend to check the README file of each repository to use it.
   
@@ -31,6 +39,12 @@ The original paper that introduced KEVIN is currently in the revision stage of [
 	sudo apt install libnuma-dev
 	```
 	
+  * [libaio](https://pagure.io/libaio)
+  
+  	```
+	sudo apt install libaio1 libaio-dev
+  	```
+  
   * After installing, put the command for shared library links.
   
   ```
