@@ -94,7 +94,7 @@ cd bigkv
   make
   ```
   
-## Exucution
+## Execution
 
 ### Prepare YCSB
 
