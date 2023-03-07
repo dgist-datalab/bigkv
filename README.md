@@ -1,7 +1,7 @@
 # BigKV
 BigKV is a key-value cache specifically designed for caching large objects in an all-flash array (AFA).
 
-The original paper that introduced KEVIN is currently in the revision stage of [ACM/SIGOPS EuroSys 2023](https://2023.eurosys.org/).
+The original paper that introduced BigKV is currently in the revision stage of [ACM/SIGOPS EuroSys 2023](https://2023.eurosys.org/).
 
 ## Prerequisites
 * The hardware/software requirements for executing BigKV are as followed.
